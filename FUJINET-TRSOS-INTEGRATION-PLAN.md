@@ -1,13 +1,15 @@
 # Architectural Plan: FujiNet Firmware Integration for TRS-OS on Agon Light 2
 
-**Document Version:** 1.2.0  
+**Document Version:** 1.3.0  
 **Target Architecture:** Zilog eZ80F92 (Olimex Agon Light 2)  
 **Target Operating System:** TRS-OS (TRSDOS 6.3.1 / LS-DOS 6.3 adapted for eZ80)  
 **Boot Drive:** Drive `:0` (Minimal RAM disk embedded in `TRSDOS.bin`, loaded via `OSboot.bin`)  
 **Network Mass Storage:** Drives `:1` through `:7` (Dynamically mounted from `fujinet-firmware`)  
 **Host / Coprocessor:** `fujinet-firmware` (DriveWire Bus over Serial / BoIP)  
 **Toolchain:** Zilog ZDS II (`ez80asm.exe` via Wine) matching `trs-os-zds`  
-**Network Hardware:** Olimex MOD-WIFI-ESP8266 (UEXT) in transparent streaming mode (`CIPMODE=1`) or physical FujiNet hardware  
+**Physical Transports:**  
+- **Transport A (Direct Serial Link):** Olimex MOD-USB-RS232 (or direct RS-232/UART) on Agon UEXT; connection is inherently active at hardware reset (no `openstream` or `closestream` needed).  
+- **Transport B (Wi-Fi TCP/IP Streaming):** Olimex MOD-WIFI-ESP8266 on Agon UEXT; requires `openstream` in MOS to enter transparent passthrough mode (`CIPMODE=1`) prior to boot, and `closestream` upon exit.  
 
 ---
 
@@ -23,7 +25,7 @@
 3. [Protocol Validation & Verification](#3-protocol-validation--verification)
    - [3.1 Validation of Direct Serial Protocol Support](#31-validation-of-direct-serial-protocol-support)
    - [3.2 Verification of Server Silence Upon Connection](#32-verification-of-server-silence-upon-connection)
-   - [3.3 Streaming Continuity: Agon MOS to TRS-OS Boot Handover](#33-streaming-continuity-agon-mos-to-trs-os-boot-handover)
+   - [3.3 Boot Lifecycle & Handover: Direct Serial Link vs. Wi-Fi Streaming](#33-boot-lifecycle--handover-direct-serial-link-vs-wi-fi-streaming)
 4. [Universal Disk Image Support: DiskDISK, JV1, and HDV](#4-universal-disk-image-support-diskdisk-jv1-and-hdv)
    - [4.1 Image Formats & Geometry Comparison](#41-image-formats--geometry-comparison)
    - [4.2 Automated Header Detection & Offset Translation](#42-automated-header-detection--offset-translation)
@@ -63,7 +65,9 @@ The primary objective of this project is to evolve the network mass storage and 
 
 ### Core Goals:
 1. **Adopt Industry-Standard Protocols:** Replace the legacy ASCII text protocol (`<00012\n`, `@ping\n`, `@bind\n`) with the high-performance binary **DriveWire 3/4** block storage protocol and the **`OP_FUJI` (0xE2)** transaction protocol.
-2. **Preserve the Agon Streaming Bootchain:** Retain the proven `openstream` $\to$ `OSboot.bin` $\to$ `TRSDOS.bin` workflow where Agon Quark MOS opens a transparent TCP/IP stream via the Olimex MOD-WIFI-ESP8266 module on UART1, boots TRS-OS, and leaves the transparent stream intact.
+2. **Dual Physical Transport Support (Direct Serial & Wi-Fi Streaming):**
+   * **Direct Serial Link (e.g., Olimex MOD-USB-RS232):** Direct point-to-point hardware connection between the Agon Light 2 UEXT connector (UART1) and FujiNet hardware or a host PC running FujiNet-PC (via USB CDC-ACM or RS-232). Because the physical serial link is inherently present and active upon power-on and hardware reset, no connection handshake is required. Agon Quark MOS directly boots TRS-OS using `*OSboot -2f TRSDOS.bin` without needing `openstream` or `closestream`.
+   * **Wi-Fi TCP/IP Streaming (e.g., Olimex MOD-WIFI-ESP8266):** Retains the proven `openstream` $\to$ `OSboot.bin` $\to$ `TRSDOS.bin` workflow where Agon Quark MOS uses AT commands via `openstream` to connect the ESP8266 to FujiNet's BoIP server (TCP port 65504) and enter transparent UART passthrough mode (`CIPMODE=1`), boots TRS-OS, and leaves the transparent stream intact. `closestream` is used if returning to MOS to restore command mode (`AT+CIPMODE=0`).
 3. **Drive Role Separation:**
    * **Drive `:0` (Boot Drive):** Dedicated to the primary system volume embedded within `TRSDOS.bin`, containing the minimal core OS kernel and FujiNet command tools.
    * **Drives `:1` through `:7` (Network Mounts):** Freely available for mounting remote TNFS shares or local SD card disk images from FujiNet, removing the historical restriction to Drive `:6`.
@@ -79,7 +83,12 @@ The primary objective of this project is to evolve the network mass storage and 
 |                                  AGON LIGHT 2 (CLIENT)                                |
 |                                                                                       |
 |  +--------------------+                                                               |
-|  |     Quark MOS      |  1. openstream <host> 65504 (ESP8266 enters CIPMODE=1)        |
+|  |     Quark MOS      |  [Option A: Direct Serial Link (MOD-USB-RS232)]               |
+|  |                    |  1. Inherent hardware connection; no openstream needed        |
+|  |                    |  2. Directly boot: OSboot TRSDOS.bin                          |
+|  |                    |                                                               |
+|  |                    |  [Option B: Wi-Fi Streaming (MOD-WIFI-ESP8266)]               |
+|  |                    |  1. openstream <host> 65504 (ESP8266 enters CIPMODE=1)        |
 |  |   agon-net-utils   |  2. OSboot TRSDOS.bin (Boot Drive :0, UART1 stream preserved) |
 |  +---------+----------+                                                               |
 |            |                                                                          |
@@ -105,21 +114,23 @@ The primary objective of this project is to evolve the network mass storage and 
 |  |                         Polled I/O, No RTS/CTS, FIFO Sync                       |  |
 |  +--------------------------------------+------------------------------------------+  |
 |                                         |                                             |
-|                                         v UART1 (PC0/PC1)                             |
-|                          +------------------------------+                             |
-|                          |  Olimex MOD-WIFI-ESP8266     |                             |
-|                          |  (Transparent CIPMODE=1)     |                             |
-|                          +--------------+---------------+                             |
-+-----------------------------------------|---------------------------------------------+
-                                          |
-                                          | Wi-Fi LAN (TCP Port 65504)
-                                          | OR Physical Serial Link
-                                          v
+|                                         v UART1 (PC0/PC1 on UEXT Header)              |
+|             +---------------------------+---------------------------+                 |
+|             |                                                       |                 |
+|             v Option A: Direct Hardware Serial                      v Option B: Wi-Fi |
+|  +-------------------------------------+          +---------------------------------+ |
+|  |     Olimex MOD-USB-RS232            |          |     Olimex MOD-WIFI-ESP8266     | |
+|  |  (Inherent, always-on serial link)  |          |     (Transparent CIPMODE=1)     | |
+|  +------------------+------------------+          +-----------------+---------------+ |
++---------------------|-----------------------------------------------|-----------------+
+                      |                                               |
+                      | Physical USB CDC-ACM / RS-232 Cable           | Wi-Fi LAN (TCP Port 65504)
+                      v                                               v
 +---------------------------------------------------------------------------------------+
 |                                FUJINET-FIRMWARE (SERVER)                              |
 |                                                                                       |
 |                 +-----------------------------------------------+                     |
-|                 | BoIPChannel (TCP:65504) OR UARTChannel (Serial) |                   |
+|                 | UARTChannel / ACMChannel OR BoIPChannel (TCP) |                     |
 |                 +-----------------------+-----------------------+                     |
 |                                         |                                             |
 |                                         v                                             |
@@ -145,8 +156,8 @@ The primary objective of this project is to evolve the network mass storage and 
 +---------------------------------------------------------------------------------------+
 ```
 
-### 2.1 `agon-net-utils`: MOS Network Bootstrap
-Located at `~/development/git/agon-net-utils`, this repository provides C utilities for Quark MOS on the eZ80:
+### 2.1 `agon-net-utils`: MOS Network Bootstrap (Wi-Fi Only)
+Located at `~/development/git/agon-net-utils`, this repository provides C utilities for Quark MOS on the eZ80 specifically for Wi-Fi streaming operation:
 * **`openstream.c`:** Sends AT commands over UART1 to initialize the Olimex MOD-WIFI-ESP8266 module:
   1. `ATE0`: Disables local echo.
   2. `AT+CIPMUX=0`: Sets single-connection mode.
@@ -156,6 +167,11 @@ Located at `~/development/git/agon-net-utils`, this repository provides C utilit
   6. Upon receiving `>`, calls `mos_uclose()` to detach MOS interrupt handlers and returns cleanly to MOS with the connection preserved.
 * **`sendstream.c`:** Sends a test string over the active transparent stream and verifies the response.
 * **`closestream.c`:** Employs the standard Hayes `+++` escape sequence with a 1.25s silence guard window to exit passthrough mode, followed by `AT+CIPCLOSE` and `AT+CIPMODE=0`.
+
+> [!IMPORTANT]
+> **Transport Scope of `openstream` and `closestream`:**  
+> The `openstream` and `closestream` utilities are strictly required **only** when operating across the Olimex MOD-WIFI-ESP8266 module, where the Wi-Fi coprocessor powers up in AT command mode and must be explicitly instructed to establish a socket and enter transparent UART passthrough (`CIPMODE=1`).  
+> In contrast, when using a **direct physical serial link** (such as the Olimex MOD-USB-RS232 adapter plugged into UEXT, connecting over USB CDC-ACM or RS-232 to a host running FujiNet-PC or a hardware FujiNet unit), the communication channel is **inherently present and active upon hardware reset**. No AT initialization, socket negotiation, `openstream`, or `closestream` is necessary; Quark MOS directly executes `*OSboot -2f TRSDOS.bin`.
 
 ### 2.2 `trs-net-tcp`: Existing Host Daemon & Protocol
 Located at `~/development/git/trs-net-tcp`, this repository provides `trs-netd.py`:
@@ -216,6 +232,14 @@ FujiNet firmware incorporates an architectural I/O abstraction layer (`IOChannel
 
 All DriveWire opcodes (`op_read`, `op_write`, `op_fuji`, `op_clock`, `op_print`) execute through `_port->read()` and `_port->write()`. The protocol logic is 100% transport-agnostic and functions identically whether over a physical RS-232 / UART cable or across a transparent TCP stream.
 
+#### Direct Hardware Serial Operation (Olimex MOD-USB-RS232)
+When connecting an Agon Light 2 to a host PC running FujiNet-PC (or a standalone FujiNet hardware unit) using the **Olimex MOD-USB-RS232** module (or a compatible RS-232 level converter) on the UEXT header:
+* The eZ80 communicates via UART1 (`PC0` = TXD1, `PC1` = RXD1) at 115,200 baud 8-N-1.
+* The physical serial circuit is **inherently present and active upon hardware reset**.
+* There is no modem negotiation, no AT command set, and no Wi-Fi association delay.
+* FujiNet-PC attaches directly to the host TTY/COM port (e.g., `/dev/cu.usbserial*` or `COM3`) via `UARTChannel`/`ACMChannel`.
+* Crucially, **`openstream` and `closestream` are not used in this configuration**.
+
 ### 3.2 Verification of Server Silence Upon Connection
 
 **Finding: CONFIRMED 100% SILENT.**
@@ -234,9 +258,35 @@ Inspection of `lib/hardware/BoIPChannel.cpp` confirms:
 
 **Conclusion:** FujiNet is a strict slave/responder. After a streaming TCP connection or serial link is opened, the server remains completely silent until the client sends a command byte.
 
-### 3.3 Streaming Continuity: Agon MOS to TRS-OS Boot Handover
+### 3.3 Boot Lifecycle & Handover: Direct Serial Link vs. Wi-Fi Streaming
 
-The boot sequence demonstrated in `agon-net-utils` and `trs-os-zds` remains fully compatible with `fujinet-firmware`:
+The boot lifecycle differs based on the physical transport used:
+
+#### Workflow A: Direct Physical Serial Link (Olimex MOD-USB-RS232)
+Because the serial connection is inherently established by the physical wiring, no pre-boot stream utilities are needed. The user directly boots TRS-OS from the MOS prompt:
+
+```
+[ Agon Quark MOS ]
+  |
+  +---> OSboot -2f TRSDOS.bin
+  |     - Direct launch: loads TRSDOS.bin into eZ80 RAM
+  |     - Transfers execution directly to TRS-OS kernel entry point
+  |     - (No openstream or connection setup required!)
+  v
+[ TRS-OS / TRSDOS 6.3.1 ]
+  |
+  +---> finish_init (SYS0_IPL):
+  |     - Re-asserts Port C Mode 7 (PC0=TXD1, PC1=RXD1)
+  |     - Configures BRG divisor = 10 (115200 baud @ 18.432 MHz)
+  |     - Zeroes UART1_IER to guarantee pure polled I/O
+  |     - Flushes UART1 hardware FIFOs (out0 (UART1_FCTL), 07h)
+  |
+  +---> TRS-OS boots into Drive :0 (the minimal boot RAM disk embedded in TRSDOS.bin)
+  +---> User dynamically mounts remote/local images (JV1, DiskDISK, HDV) onto Drives :1 through :7
+```
+
+#### Workflow B: Wi-Fi TCP/IP Streaming (Olimex MOD-WIFI-ESP8266)
+When using the Wi-Fi module, the ESP8266 boots in AT command mode. The `openstream` utility from `agon-net-utils` must be executed first to connect to FujiNet and switch the ESP8266 into transparent UART passthrough mode (`CIPMODE=1`):
 
 ```
 [ Agon Quark MOS ]
@@ -250,7 +300,7 @@ The boot sequence demonstrated in `agon-net-utils` and `trs-os-zds` remains full
   |
   +---> OSboot -2f TRSDOS.bin
   |     - Loads TRSDOS.bin into eZ80 RAM
-  |     - Transfers execution to TRS-OS entry point
+  |     - Transfers execution to TRS-OS entry point while preserving UART1 stream
   v
 [ TRS-OS / TRSDOS 6.3.1 ]
   |
@@ -262,6 +312,8 @@ The boot sequence demonstrated in `agon-net-utils` and `trs-os-zds` remains full
   |
   +---> TRS-OS boots into Drive :0 (the minimal boot RAM disk embedded in TRSDOS.bin)
   +---> User dynamically mounts remote images (JV1, DiskDISK, HDV) onto Drives :1 through :7
+  |
+  +---> (Optional Exit to MOS: closestream issues '+++' to restore AT command mode)
 ```
 
 ---
@@ -671,8 +723,9 @@ We provide a dedicated Python packager (`tools/bin_to_cmd.py`) that converts the
 ```
 +-------------------------------------------------------------------------------+
 | PHASE 1: Wire Protocol Verification & FujiNet Host Setup                      |
-| - Verify fujinet-firmware (BUILD_COCO) BoIP listener on port 65504.           |
-| - Test agon-net-utils openstream connection to FujiNet BoIP.                  |
+| - Verify fujinet-firmware (BUILD_COCO) serial port interface and BoIP listener.|
+| - Test direct hardware serial connection (MOD-USB-RS232) without openstream.   |
+| - Test agon-net-utils openstream connection to FujiNet BoIP (for Wi-Fi stream). |
 | - Validate zero-transmission silence on connection using test scripts.        |
 | - Test image detection with JV1, DiskDISK, and HDV sample files.              |
 +-------------------------------------------------------------------------------+
@@ -719,7 +772,8 @@ We provide a dedicated Python packager (`tools/bin_to_cmd.py`) that converts the
 | Test ID | Objective | Test Procedure | Acceptance Criteria |
 | :--- | :--- | :--- | :--- |
 | **TC-01** | Server Silence Verification | Connect via `nc` or test script to port 65504; monitor for 10 seconds. | Zero bytes received from server prior to client command. |
-| **TC-02** | MOS Stream Boot Handover | Run `openstream <host> 65504` $\to$ `OSboot TRSDOS.bin`. | TRSDOS boots to prompt without UART1 desynchronization or freeze. |
+| **TC-02a** | Direct Serial Boot Handover | Connect MOD-USB-RS232; execute `OSboot TRSDOS.bin` directly from MOS. | TRSDOS boots to prompt immediately; UART1 communicates over direct serial. |
+| **TC-02b** | MOS Wi-Fi Stream Handover | Connect MOD-WIFI-ESP8266; run `openstream <host> 65504` $\to$ `OSboot TRSDOS.bin`. | TRSDOS boots to prompt without UART1 desynchronization or freeze. |
 | **TC-03** | DriveWire Checksum Integrity | Execute test script computing 16-bit sums against known 256B test vectors. | Assembly calculation matches expected sum $\sum b_i \pmod{65536}$ exactly. |
 | **TC-04** | Sector Read Verification | TRSDOS reads sector 0 from Drive `:1` mounted to test image. | 256 bytes read correctly; status byte 0x00; no CRC errors. |
 | **TC-05** | Sector Write Verification | TRSDOS writes known sector pattern; re-reads and compares. | Write verified; server commits data; status byte 0x00. |
@@ -739,7 +793,7 @@ This integration synthesizes architecture, codebases, and protocols across five 
 
 | Project / Component | Local Workspace Path | Upstream Repository / Reference | Role in Integration |
 | :--- | :--- | :--- | :--- |
-| **`agon-net-utils`** | `~/development/git/agon-net-utils` | [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils) | Agon Quark MOS utilities (`openstream`, `sendstream`, `closestream`) managing ESP8266 transparent streaming mode (`CIPMODE=1`). |
+| **`agon-net-utils`** | `~/development/git/agon-net-utils` | [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils) | Agon Quark MOS utilities (`openstream`, `sendstream`, `closestream`) managing ESP8266 transparent streaming mode (`CIPMODE=1`) for Wi-Fi; not required for direct serial links. |
 | **`trs-net-tcp`** | `~/development/git/trs-net-tcp` | [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp) | Legacy Python TCP/serial disk server (`trs-netd.py`) and protocol evaluation documentation being superseded. |
 | **`trs-os-zds`** | `~/development/git/trs-os-zds` | [rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds) | Core operating system source tree (`TRSDOS_7`), Agon Light 2 patchset, and ZDS II Wine build automation for `TRSDOS.bin`. |
 | **`fujinet-firmware`** | `~/development/git/fujinet-firmware` | [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware) | Target server framework providing DriveWire (`BUILD_COCO`) block I/O, `OP_FUJI` transactions, and BoIP/serial transports. |
