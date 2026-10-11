@@ -4,20 +4,29 @@
 
 This project provides the architecture, driver specifications, and native utility suite to integrate the **[FujiNet](https://fujinet.online)** peripheral framework with **TRS-OS** (TRSDOS 6.3.1 / LS-DOS 6.3 adapted for the Zilog eZ80 on the Olimex Agon Light 2).
 
-It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://github.com/rlucente-retro/trs-net-tcp) with the standard binary **DriveWire** protocol and **FujiNet (`OP_FUJI`)** transaction architecture, enabling dynamic mounting of local images and remote TNFS shares across multiple virtual drives.
+It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://github.com/rlucente-retro/trs-net-tcp) with the standard binary **DriveWire 3/4** protocol and **FujiNet (`OP_FUJI`)** transaction architecture, enabling dynamic mounting of local images and remote TNFS shares across virtual disk drives.
 
 ---
 
 ## Key Features & Drive Architecture
 
-* **Drive Roles:**
-  * **Drive `:0` (Boot Drive):** Dedicated boot system volume embedded in `TRSDOS.bin` and launched via `OSboot.bin`, containing the minimal core OS kernel and FujiNet utilities (`FN*.CMD`).
-  * **Drives `:1` through `:7` (Network Mounts):** Dynamically mounted from remote TNFS servers or local SD card images via FujiNet commands (`FNSETDEV`, `FNMOUNTIMG`).
-* **Universal Disk Image Support:** Fully supports **DiskDISK** (+256B header), **JV1** (flat 256B sectors), and high-capacity **HDV** hard disk files (5 MB to 32 MB) through automated header detection and 24-bit LSN addressing.
-* **Lean Boot Architecture:** `TRSDOS.bin` embeds only a minimal bootable OS image (`SYS0/SYS`..`SYS6/SYS`) and the FujiNet command suite, booting instantly into `TRSDOS Ready`.
-* **ZDS II / Wine Build Pipeline:** Leverages Zilog's official `ez80asm.exe` assembler via Apple's Wine layer (matching `trs-os-zds`), generating authentic TRSDOS `.CMD` load files.
+* **Staged Drive Roles & Local Storage Coexistence:**
+  * **Drive `:0` (Boot Drive):** Dedicated local system volume containing the core OS kernel (`SYS0/SYS`..`SYS6/SYS`) and FujiNet command tools (`FN*.CMD`), booting instantly in under 1 second.
+  * **Drive `:1` (Local Data Drive):** Preserves existing local SD card storage and protection rules.
+  * **Drive `:6` (Network Drive):** Assigned as the initial dedicated network storage drive mapped to FujiNet Device Slot 0, matching the established network routing in `driver-FDCDVR.S` and verified by automated emulator proof.
+  * **Multi-Drive Expansion:** FujiNet's `BUILD_COCO` server provides **4 virtual device slots (Slots 0–3)** and **8 host slots (Slots 0–7)**. Drives `:2` through `:5` can be dynamically mapped to network slots as additional storage.
+* **Universal Disk Image Support:**
+  * **JV1:** Flat 256-byte sector layout ($LSN \times 256$), with geometry derived dynamically (e.g. Directory Cylinder 17).
+  * **DiskDISK:** 256-byte header containing authentic DCT metadata, followed by payload sectors with a 256-byte offset.
+  * **HDV Hard Disks:** High-capacity images. Note that while DriveWire wire frames support 24-bit LSNs (4 GB), the TRS-OS floppy driver architecture (`driver-FDCDVR.S`) addresses up to 4 MiB ($256 \text{ cylinders} \times 64 \text{ sectors/cyl}$); volumes exceeding 4 MiB require a dedicated hard disk driver.
+* **Staged Integrity & Safety-First Deployment:**
+  * **Stage 1 (Verified Read-Only Network Drive):** Initial deployment enforces write-protection (`WP`) at both the guest driver and server mount levels.
+  * **Stage 2 (Server Firmware Patches & Writable Storage):** Auditing of the upstream COCO `fujinet-firmware` revealed that write checksum validation is currently disabled, image bounds checks are missing in `mediaTypeDSK.cpp`, and flush errors are not propagated. Full writable storage is enabled after applying server-side integrity patches and passing negative regression suites.
+* **ZDS II / Wine Build Pipeline & Authentic CMD Packaging:**
+  * Compiles using Zilog's official `ez80asm.exe` under Wine (matching `trs-os-zds`).
+  * Emits authentic TRSDOS `.CMD` binaries with proper load blocks (Record Type 01: `01 <len> <addr_lo> <addr_hi> <payload>`) and transfer addresses (Record Type 02: `02 02 <entry_lo> <entry_hi>`).
 * **Dual Physical Transports:**
-  * **Direct Serial Link (Olimex MOD-USB-RS232):** Inherent, always-on point-to-point hardware connection; bypasses `openstream` and boots directly from MOS.
+  * **Direct Serial Link (Olimex MOD-USB-RS232):** Inherent, always-on point-to-point hardware connection on UEXT (`PC0`/`PC1`); bypasses `openstream` and boots directly from MOS.
   * **Wi-Fi TCP/IP Streaming (Olimex MOD-WIFI-ESP8266):** Uses `openstream` $\to$ `OSboot.bin` $\to$ `TRSDOS.bin` to place the Wi-Fi module in transparent passthrough mode (`CIPMODE=1`).
 
 ---
@@ -39,20 +48,22 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |  |       TRS-OS Operating System (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)       |  |
 |  |                                                                         |  |
 |  | +-------------------------------+     +-------------------------------+ |  |
-|  | |     BOOT DRIVE: Drive :0      |     |    DriveWire Block Driver     | |  |
-|  | | Minimal Boot RAM Disk (:0)    |     |        driver-FDCDVR.S        | |  |
-|  | | SYS0..SYS6 + FN*.CMD Tools    |     |   (Network Drives :1 to :7)   | |  |
+|  | |     LOCAL STORAGE DRIVES      |     |    DriveWire Block Driver     | |  |
+|  | | Drive :0 (Local Boot SD/RAM)  |     |        driver-FDCDVR.S        | |  |
+|  | | Drive :1 (Local Data SD)      |     |   Drive :6 (Network Drive)    | |  |
+|  | | SYS0..SYS6 + FN*.CMD Tools    |     |   (Optional Drives :2 to :5)  | |  |
 |  | +-------------------------------+     +---------------+---------------+ |  |
-|  | | Native FujiNet Utilities      |                     | OP_READ/WRITE   |  |
-|  | | (FNSTATUS, FNMOUNT, etc.)     |                     | (0x52 / 0x57)   |  |
-|  | +---------------+---------------+                     | 24b LSN, CRC    |  |
+|  | | Native FujiNet Utilities      |                     | OP_READEX/WR    |  |
+|  | | (FNSTATUS, FNMOUNT, etc.)     |                     | (0xD2 / 0x57)   |  |
+|  | | Basenames <= 8 Characters     |                     | 24b LSN, CRC16  |  |
+|  | +---------------+---------------+                     |                 |  |
 |  |                 |                                     |                 |  |
 |  |                 | OP_FUJI (0xE2)                      |                 |  |
 |  |                 +------------------+------------------+                 |  |
 |  |                                    |                                    |  |
 |  |                                    v                                    |  |
 |  | +---------------------------------------------------------------------+ |  |
-|  | |  driver-UART1.S: 115200 8-N-1 Polled I/O (No RTS/CTS Handshake)     | |  |
+|  | |  driver-UART1.S: Explicit 115200 8-N-1 Polled I/O (IER=0, FCTL=07h)  | |  |
 |  | +----------------------------------+----------------------------------+ |  |
 |  +------------------------------------|------------------------------------+  |
 |                                       | UART1 (PC0/PC1 on UEXT Connector)     |
@@ -65,7 +76,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |   |   * Always-on physical link   |       |    * Pre-boot: openstream     |   |
 |   |   * Direct: OSboot TRSDOS.bin |       |    * Transparent CIPMODE=1    |   |
 |   +---------------+---------------+       +---------------+---------------+   |
-+-------------------|---------------------------------------|-------------------+
+| +-----------------|---------------------------------------|-----------------+ |
                     |                                       |                    
                     | Physical USB CDC-ACM / RS-232         | Wi-Fi (TCP:65504)  
                     v                                       v                    
@@ -83,14 +94,14 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |   |                   (lib/bus/drivewire/drivewire.cpp)                   |   |
 |   +---------------+---------------------------------------+---------------+   |
 |                   |                                       |                   |
-|     OP_READ/WRITE |                                       | OP_FUJI (0xE2)    |
+|     OP_READEX/WR  |                                       | OP_FUJI (0xE2)    |
 |                   v                                       v                   |
 |   +-------------------------------+       +-------------------------------+   |
 |   |         drivewireDisk         |       |         drivewireFuji         |   |
 |   |   (Universal Media Handler)   |       |    (FujiNet Config Engine)    |   |
 |   |  - JV1 Disks (Flat 256B)      |       |  - 8 Host Slots (TNFS / SD)   |   |
-|   |  - DiskDISK (+256B Header)    |       |  - 8 Device Slots (:1 to :7)  |   |
-|   |  - HDV Hard Disk (+256B)      |       |  - Device Path Configuration  |   |
+|   |  - DiskDISK (+256B Offset)    |       |  - 4 Device Slots (Slots 0-3) |   |
+|   |  - HDV Hard Disk (4 MiB max)  |       |  - Device Path Configuration  |   |
 |   +-------------------------------+       +-------------------------------+   |
 +-------------------------------------------------------------------------------+
 ```
@@ -107,7 +118,7 @@ The system supports two physical transports:
   ```text
   *OSboot -2f TRSDOS.bin
   ```
-* **Zero Latency:** TRS-OS initializes UART1 (polled mode) and immediately accesses DriveWire virtual disks and FujiNet utilities over the physical serial line.
+* **Explicit UART Reinitialization:** TRS-OS explicitly configures Port C Mode 7, BRG divisor 10 (115,200 baud), LCTL `0x03` (8-N-1), zeroes `UART1_IER` for polled mode, and flushes FIFOs (`UART1_FCTL = 0x07`), ensuring clean handover from MOS.
 
 ### Option B: Wi-Fi TCP/IP Streaming (e.g., Olimex MOD-WIFI-ESP8266)
 1. **Pre-Boot Handshake (`openstream`):**
@@ -116,12 +127,17 @@ The system supports two physical transports:
 2. **Boot TRS-OS (`OSboot.bin`):**
    * MOS executes `*OSboot -2f TRSDOS.bin`, transferring execution to TRS-OS while preserving the active transparent stream on UART1.
 3. **Session Teardown (`closestream`):**
-   * If exiting back to MOS, `closestream` sends `+++` with guard times and `AT+CIPCLOSE` to restore AT command mode.
+   * If exiting back to MOS, `closestream` sends `+++` with guard times (>20 ms) and `AT+CIPCLOSE` to restore AT command mode.
 
 ### Active TRS-OS Operation (Both Transports)
-* `TRSDOS.bin` initializes the embedded RAM drive as **Drive `:0`** and presents the `TRSDOS Ready` prompt.
-* User mounts disk images onto **Drives `:1` through `:7`** using native TRSDOS FujiNet utilities (`FNSTATUS`, `FNMOUNT`, `FNLISTDEVS`, `FNSETDEV`, `FNMOUNTIMG`).
-* Disk I/O to Drives `:1`–`:7` occurs via binary DriveWire `OP_READ` (0x52) and `OP_WRITE` (0x57) commands with 16-bit big-endian checksums.
+* `TRSDOS.bin` boots with Drive `:0` (system files) and Drive `:1` (local SD), presenting the `TRSDOS Ready` prompt.
+* **Drive `:6`** is initialized as the primary network drive mapped to FujiNet Device Slot 0.
+* Disk read I/O occurs via binary DriveWire `OP_READEX` (`0xD2`) commands:
+  1. Client sends `0xD2 <slot> <LSN_24>` (5 bytes).
+  2. Server returns 256 bytes raw sector data.
+  3. Client calculates and transmits 16-bit big-endian checksum (2 bytes).
+  4. Server returns 1-byte status (`0x00` = Success, `0xF3` = Checksum error).
+* Writes are rejected with write-protection (`WP`) during Stage 1 until server integrity patches are applied.
 
 ---
 
@@ -136,19 +152,21 @@ This suite ports the functionality of the reference NitrOS-9 FujiNet utilities (
 > Consequently, all `FN*.CMD` utilities communicate over standard serial `OP_FUJI` (0xE2) transactions to configure the **remote FujiNet peripheral device**:
 > - Any network properties reported by `FNSTATUS` (IP address, Wi-Fi SSID, MAC address) belong to the **FujiNet device itself** (its own network interface used to reach TNFS servers or its web config) or the host PC running FujiNet-PC, **not** to the Agon Light 2 or TRSDOS.
 > - When running FujiNet-PC over a direct serial cable without Wi-Fi, `FNSTATUS` displays the host PC's IP and indicates `Direct Serial / Wired` (or N/A) for Wi-Fi SSID.
-> - Remote host and mounting utilities (`FNLISTHOSTS`, `FNMOUNT`, `FNSETDEV`, `FNMOUNTIMG`) instruct the **FujiNet server** to fetch disk images over its own network or local storage and map them to virtual DriveWire drives `:1` through `:7`.
+> - Remote host and mounting utilities (`FNHOSTS`, `FNMOUNT`, `FNSETDEV`, `FNMNTIMG`) instruct the **FujiNet server** to fetch disk images over its own network or local storage and map them to virtual DriveWire device slots.
+
+All utilities conform to the LS-DOS 6.x constraint of **$\le 8$-character basenames**:
 
 | Utility | Syntax | Purpose |
 | :--- | :--- | :--- |
-| `FNSTATUS` | `FNSTATUS` | Queries the FujiNet peripheral's adapter configuration, displaying its firmware version, IP address, MAC, and external Wi-Fi/network connection state. |
-| `FNLISTHOSTS` | `FNLISTHOSTS` | Lists all 8 configured host slots (0–7) stored on the FujiNet device (remote TNFS servers, internet URLs, or local SD card). |
-| `FNGETHOST` | `FNGETHOST <slot>` | Displays the hostname/URL assigned to a specific FujiNet host slot. |
-| `FNSETHOST` | `FNSETHOST <slot> <hostname>` | Configures or updates the remote hostname or TNFS URL for a given FujiNet host slot. |
+| `FNSTATUS` | `FNSTATUS` | Queries FujiNet adapter configuration (`0xE8`), displaying firmware version, IP address, MAC, and external network connection state (140-byte record). |
+| `FNHOSTS` | `FNHOSTS` | Lists all 8 configured host slots (0–7) stored on the FujiNet device (remote TNFS servers, internet URLs, or local SD card). |
+| `FNGETH` | `FNGETH <slot>` | Displays the hostname/URL assigned to a specific FujiNet host slot (0–7). |
+| `FNSETH` | `FNSETH <slot> <hostname>` | Configures or updates the remote hostname or TNFS URL for a given FujiNet host slot. |
 | `FNMOUNT` | `FNMOUNT <slot>` | Commands the FujiNet device to mount a host slot (connect to remote TNFS server or local storage). |
-| `FNLISTDEVS` | `FNLISTDEVS` | Queries FujiNet's 8 virtual device slots, listing mounted image filenames, access modes (RO/RW), and drive mappings. |
-| `FNGETDEV` | `FNGETDEV <slot>` | Displays the full pathname of the disk image currently mounted in a FujiNet device slot. |
+| `FNDEVS` | `FNDEVS` | Queries FujiNet's 4 virtual device slots (152-byte table), listing mounted image filenames, access modes (RO/RW), and drive mappings. |
+| `FNGETDEV` | `FNGETDEV <slot>` | Displays the full pathname of the disk image currently mounted in a FujiNet device slot (0–3). |
 | `FNSETDEV` | `FNSETDEV <dev_slot> <host_slot> <mode> <path>` | Directs FujiNet to assign a specific disk image on a host slot to a device slot. |
-| `FNMOUNTIMG` | `FNMOUNTIMG <dev_slot> [mode] [drive]` | Mounts the disk image in the specified FujiNet device slot to target TRSDOS Drive `:1` through `:7`. |
+| `FNMNTIMG` | `FNMNTIMG <dev_slot> [mode]` | Mounts the disk image in the specified FujiNet device slot for active I/O. |
 
 ---
 
@@ -157,6 +175,6 @@ This suite ports the functionality of the reference NitrOS-9 FujiNet utilities (
 * **`agon-net-utils`** ([rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils)): Agon Quark MOS network utilities (`openstream`, `sendstream`, `closestream`).
 * **`trs-net-tcp`** ([rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp)): Previous Python-based TCP/serial disk daemon for TRS-OS.
 * **`trs-os-zds`** ([rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds)): TRS-OS build automation and Agon Light 2 patchset.
-* **`fujinet-firmware`** ([FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware)): Core multi-platform FujiNet firmware.
-* **`nitros9`** ([nitros-9/nitros9](https://github.com/nitros-9/nitros9)): Reference 6809 assembly FujiNet utilities for NitrOS-9 (`level1/cmds/fn*.as`).
+* **`fujinet-firmware`** ([FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware)): Core multi-platform FujiNet firmware (`BUILD_COCO` DriveWire target).
+* **`nitros9`** ([nitros-9/nitros9](https://github.com/nitros-9/nitros9)): Reference 6809 assembly FujiNet utilities for NitrOS-9 ([`level1/cmds/fn*.as`](https://github.com/nitros-9/nitros9/tree/main/level1/cmds)).
 * **`OSboot`** ([sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot)): MOS bootstrap loader for launching `TRSDOS.bin`.
