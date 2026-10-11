@@ -232,6 +232,8 @@ Empirical validation on host loopback demonstrates:
 
 ### 3.3 Boot Lifecycle & Explicit UART1 Reinitialization
 
+For a comprehensive explanation of the entire three-stage execution chain, memory maps, and driver emulation, see [`TRSOS-BOOT-ARCHITECTURE.md`](TRSOS-BOOT-ARCHITECTURE.md).
+
 When Quark MOS detaches from UART1 via `mos_uclose()` at the end of `openstream`, MOS clears `IER`, `LCTL`, `MCTL`, and `FCTL` to zero. Furthermore, the warm-boot path in TRS-OS (`SYS0_IPL/ipl-eZ80_CPU.S`) detects the MOS platform marker and skips cold UART initialization (`NOINITIAL`).
 
 Therefore, the TRS-OS network driver must **explicitly reinitialize eZ80 UART1** in `finish_init`:
