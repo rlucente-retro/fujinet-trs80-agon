@@ -79,81 +79,67 @@ The primary objective of this project is to evolve the network mass storage and 
 ## 2. Codebase Analysis & Architectural Overview
 
 ```
-+---------------------------------------------------------------------------------------+
-|                                  AGON LIGHT 2 (CLIENT)                                |
-|                                                                                       |
-|  +--------------------+                                                               |
-|  |     Quark MOS      |  [Option A: Direct Serial Link (MOD-USB-RS232)]               |
-|  |                    |  1. Inherent hardware connection; no openstream needed        |
-|  |                    |  2. Directly boot: OSboot TRSDOS.bin                          |
-|  |                    |                                                               |
-|  |                    |  [Option B: Wi-Fi Streaming (MOD-WIFI-ESP8266)]               |
-|  |                    |  1. openstream <host> 65504 (ESP8266 enters CIPMODE=1)        |
-|  |   agon-net-utils   |  2. OSboot TRSDOS.bin (Boot Drive :0, UART1 stream preserved) |
-|  +---------+----------+                                                               |
-|            |                                                                          |
-|            v                                                                          |
-|  +---------------------------------------------------------------------------------+  |
-|  |                    TRS-OS (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)                   |  |
-|  |                                                                                 |  |
-|  |  +-----------------------------+       +-------------------------------------+  |  |
-|  |  |   BOOT DRIVE: Drive :0      |       |       DriveWire Block Driver        |  |  |
-|  |  | Minimal Boot RAM Disk       |       |           driver-FDCDVR.S           |  |  |
-|  |  | Core SYS files + FN*.CMD    |       |      (Drives :1 through :7)         |  |  |
-|  |  +-----------------------------+       +------------------+------------------+  |  |
-|  |  | Native FujiNet Utilities    |                          |                     |  |
-|  |  | (FNSTATUS, FNMOUNT, etc.)   |                          | OP_READ / OP_WRITE  |  |
-|  |  +--------------+--------------+                          | (0x52, 0x57)        |  |
-|  |                 |                                         | 24-bit LSN, 16b CRC |  |
-|  |                 | FUJILIB Transactions                    |                     |  |
-|  |                 | (OP_FUJI 0xE2)                          |                     |  |
-|  |                 +--------------------+--------------------+                     |  |
-|  |                                      |                                          |  |
-|  |                                      v                                          |  |
-|  |                         driver-UART1.S (115200 8-N-1)                           |  |
-|  |                         Polled I/O, No RTS/CTS, FIFO Sync                       |  |
-|  +--------------------------------------+------------------------------------------+  |
-|                                         |                                             |
-|                                         v UART1 (PC0/PC1 on UEXT Header)              |
-|             +---------------------------+---------------------------+                 |
-|             |                                                       |                 |
-|             v Option A: Direct Hardware Serial                      v Option B: Wi-Fi |
-|  +-------------------------------------+          +---------------------------------+ |
-|  |     Olimex MOD-USB-RS232            |          |     Olimex MOD-WIFI-ESP8266     | |
-|  |  (Inherent, always-on serial link)  |          |     (Transparent CIPMODE=1)     | |
-|  +------------------+------------------+          +-----------------+---------------+ |
-+---------------------|-----------------------------------------------|-----------------+
-                      |                                               |
-                      | Physical USB CDC-ACM / RS-232 Cable           | Wi-Fi LAN (TCP Port 65504)
-                      v                                               v
-+---------------------------------------------------------------------------------------+
-|                                FUJINET-FIRMWARE (SERVER)                              |
-|                                                                                       |
-|                 +-----------------------------------------------+                     |
-|                 | UARTChannel / ACMChannel OR BoIPChannel (TCP) |                     |
-|                 +-----------------------+-----------------------+                     |
-|                                         |                                             |
-|                                         v                                             |
-|                 +-----------------------------------------------+                     |
-|                 |          BUILD_COCO / DriveWire Bus           |                     |
-|                 |         (lib/bus/drivewire/drivewire.cpp)     |                     |
-|                 +-------+-------------------------------+-------+                     |
-|                         |                               |                             |
-|          OP_READ/WRITE  |                               | OP_FUJI (0xE2)              |
-|                         v                               v                             |
-|         +-------------------------------+ +--------------------------------+          |
-|         |        drivewireDisk          | |         drivewireFuji          |          |
-|         |     (lib/device/drivewire)    | |     (fujiDevice base class)    |          |
-|         +---------------+---------------+ +---------------+----------------+          |
-|                         |                                 |                           |
-|                         v                                 v                           |
-|        +---------------------------------+        +---------------+                   |
-|        |     Universal Media Handler     |        | Host & Device |                   |
-|        |    - JV1 (Flat 256B sectors)    |        | Slot Registry |                   |
-|        |    - DiskDISK (+256B header)    |        |  TNFS / SD    |                   |
-|        |    - HDV Hard Disk (+256B/geom) |        +---------------+                   |
-|        +---------------------------------+                                            |
-+---------------------------------------------------------------------------------------+
++-------------------------------------------------------------------------------+
+|                             AGON LIGHT 2 (CLIENT)                             |
+|                                                                               |
+|  +-------------------------------------------------------------------------+  |
+|  |       TRS-OS Operating System (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)       |  |
+|  |                                                                         |  |
+|  | +-------------------------------+     +-------------------------------+ |  |
+|  | |     BOOT DRIVE: Drive :0      |     |    DriveWire Block Driver     | |  |
+|  | | Minimal Boot RAM Disk (:0)    |     |        driver-FDCDVR.S        | |  |
+|  | | SYS0..SYS6 + FN*.CMD Tools    |     |   (Network Drives :1 to :7)   | |  |
+|  | +-------------------------------+     +---------------+---------------+ |  |
+|  | | Native FujiNet Utilities      |                     | OP_READ/WRITE   |  |
+|  | | (FNSTATUS, FNMOUNT, etc.)     |                     | (0x52 / 0x57)   |  |
+|  | +---------------+---------------+                     | 24b LSN, CRC    |  |
+|  |                 |                                     |                 |  |
+|  |                 | OP_FUJI (0xE2)                      |                 |  |
+|  |                 +------------------+------------------+                 |  |
+|  |                                    |                                    |  |
+|  |                                    v                                    |  |
+|  | +---------------------------------------------------------------------+ |  |
+|  | |  driver-UART1.S: 115200 8-N-1 Polled I/O (No RTS/CTS Handshake)     | |  |
+|  | +----------------------------------+----------------------------------+ |  |
+|  +------------------------------------|------------------------------------+  |
+|                                       | UART1 (PC0/PC1 on UEXT Connector)     |
+|                   +-------------------+-------------------+                   |
+|                   |                                       |                   |
+|                   v Option A: Direct Serial               v Option B: Wi-Fi   |
+|   +-------------------------------+       +-------------------------------+   |
+|   |     Olimex MOD-USB-RS232      |       |    Olimex MOD-WIFI-ESP8266    |   |
+|   | (Direct Hardware Serial Link) |       |    (Wi-Fi TCP Passthrough)    |   |
+|   |   * Always-on physical link   |       |    * Pre-boot: openstream     |   |
+|   |   * Direct: OSboot TRSDOS.bin |       |    * Transparent CIPMODE=1    |   |
+|   +---------------+---------------+       +---------------+---------------+   |
++-------------------|---------------------------------------|-------------------+
+                    |                                       |                    
+                    | Physical USB CDC-ACM / RS-232         | Wi-Fi (TCP:65504)  
+                    v                                       v                    
++-------------------------------------------------------------------------------+
+|                       FUJINET HOST (SERVER / PERIPHERAL)                      |
+|                                                                               |
+|   +---------------+---------------------------------------+---------------+   |
+|   |               |                                       |               |   |
+|   |  UARTChannel / ACMChannel (Serial)    OR    BoIPChannel (TCP:65504)   |   |
+|   +---------------+-------------------+-------------------+---------------+   |
+|                                       |                                       |
+|                                       v                                       |
+|   +-----------------------------------------------------------------------+   |
+|   |                      BUILD_COCO / DriveWire Bus                       |   |
+|   |                   (lib/bus/drivewire/drivewire.cpp)                   |   |
+|   +---------------+---------------------------------------+---------------+   |
+|                   |                                       |                   |
+|     OP_READ/WRITE |                                       | OP_FUJI (0xE2)    |
+|                   v                                       v                   |
+|   +-------------------------------+       +-------------------------------+   |
+|   |         drivewireDisk         |       |         drivewireFuji         |   |
+|   |   (Universal Media Handler)   |       |    (FujiNet Config Engine)    |   |
+|   |  - JV1 Disks (Flat 256B)      |       |  - 8 Host Slots (TNFS / SD)   |   |
+|   |  - DiskDISK (+256B Header)    |       |  - 8 Device Slots (:1 to :7)  |   |
+|   |  - HDV Hard Disk (+256B)      |       |  - Device Path Configuration  |   |
+|   +-------------------------------+       +-------------------------------+   |
++-------------------------------------------------------------------------------+
 ```
 
 ### 2.1 `agon-net-utils`: MOS Network Bootstrap (Wi-Fi Only)
