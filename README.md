@@ -127,7 +127,7 @@ The system supports two physical transports:
 
 ## Native TRSDOS FujiNet Utilities
 
-This suite ports the functionality of the reference NitrOS-9 FujiNet utilities (`~/development/git/nitros9-main/level1/cmds/fn*.as`) to native TRSDOS `.CMD` binaries executable directly from the `TRSDOS Ready` prompt.
+This suite ports the functionality of the reference NitrOS-9 FujiNet utilities ([nitros9 level1/cmds/fn*.as](https://github.com/nitros-9/nitros9/tree/main/level1/cmds)) to native TRSDOS `.CMD` binaries executable directly from the `TRSDOS Ready` prompt.
 
 > [!NOTE]
 > **Transport Transparency & TRSDOS Independence:**  
@@ -154,9 +154,9 @@ This suite ports the functionality of the reference NitrOS-9 FujiNet utilities (
 
 ## Related Repositories & Reference Codebases
 
-* **`agon-net-utils`** (`~/development/git/agon-net-utils`): Agon Quark MOS network utilities (`openstream`, `sendstream`, `closestream`).
-* **`trs-net-tcp`** (`~/development/git/trs-net-tcp`): Previous Python-based TCP/serial disk daemon for TRS-OS.
-* **`trs-os-zds`** (`~/development/git/trs-os-zds`): TRS-OS build automation and Agon Light 2 patchset.
-* **`fujinet-firmware`** (`~/development/git/fujinet-firmware`): Core multi-platform FujiNet firmware.
-* **`nitros9-main`** (`~/development/git/nitros9-main`): Reference 6809 assembly FujiNet utilities for NitrOS-9 (`level1/cmds/fn*.as`).
+* **`agon-net-utils`** ([rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils)): Agon Quark MOS network utilities (`openstream`, `sendstream`, `closestream`).
+* **`trs-net-tcp`** ([rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp)): Previous Python-based TCP/serial disk daemon for TRS-OS.
+* **`trs-os-zds`** ([rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds)): TRS-OS build automation and Agon Light 2 patchset.
+* **`fujinet-firmware`** ([FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware)): Core multi-platform FujiNet firmware.
+* **`nitros9`** ([nitros-9/nitros9](https://github.com/nitros-9/nitros9)): Reference 6809 assembly FujiNet utilities for NitrOS-9 (`level1/cmds/fn*.as`).
 * **`OSboot`** ([sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot)): MOS bootstrap loader for launching `TRSDOS.bin`.

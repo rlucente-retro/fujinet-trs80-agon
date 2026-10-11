@@ -144,7 +144,7 @@ The primary objective of this project is to evolve the network mass storage and 
 ```
 
 ### 2.1 `agon-net-utils`: MOS Network Bootstrap (Wi-Fi Only)
-Located at `~/development/git/agon-net-utils`, this repository provides C utilities for Quark MOS on the eZ80 specifically for Wi-Fi streaming operation:
+Provided by [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils), this repository contains C utilities for Quark MOS on the eZ80 specifically for Wi-Fi streaming operation:
 * **`openstream.c`:** Sends AT commands over UART1 to initialize the Olimex MOD-WIFI-ESP8266 module:
   1. `ATE0`: Disables local echo.
   2. `AT+CIPMUX=0`: Sets single-connection mode.
@@ -161,7 +161,7 @@ Located at `~/development/git/agon-net-utils`, this repository provides C utilit
 > In contrast, when using a **direct physical serial link** (such as the Olimex MOD-USB-RS232 adapter plugged into UEXT, connecting over USB CDC-ACM or RS-232 to a host running FujiNet-PC or a hardware FujiNet unit), the communication channel is **inherently present and active upon hardware reset**. No AT initialization, socket negotiation, `openstream`, or `closestream` is necessary; Quark MOS directly executes `*OSboot -2f TRSDOS.bin`.
 
 ### 2.2 `trs-net-tcp`: Existing Host Daemon & Protocol
-Located at `~/development/git/trs-net-tcp`, this repository provides `trs-netd.py`:
+Provided by [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp), this repository provides `trs-netd.py`:
 * **Wire Protocol:** ASCII line-oriented protocol with `\n` line delimiters:
   * Read Sector: `<00012\n` $\to$ Returns 256 bytes raw data + 4 bytes big-endian checksum (`sum % 256`).
   * Write Sector: `>00012\n` + 256B payload + 4B checksum $\to$ Returns 4B calculated checksum.
@@ -170,7 +170,7 @@ Located at `~/development/git/trs-net-tcp`, this repository provides `trs-netd.p
 * **Characteristics:** Pure request-response; completely silent upon connection until client transmits. Bound to a single disk file (`Volumes/sys720k.dsk`) at daemon launch.
 
 ### 2.3 `trs-os-zds`: Agon Light 2 Operating System Core
-Located at `~/development/git/trs-os-zds`, this repository contains the source code for TRSDOS 6.3.1 / LS-DOS 6.3 adapted for the eZ80:
+Provided by [rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds), this repository contains the source code for TRSDOS 6.3.1 / LS-DOS 6.3 adapted for the eZ80:
 * **Hardware Adaptation (`patches/0001-uart1-streaming.patch`):**
   * Agon Light 2 uses Port C Mode 7 (`PC0` = TXD1, `PC1` = RXD1) on the eZ80F92.
   * 18.432 MHz crystal yields BRG divisor 10 for 115,200 baud with 0% error.
@@ -179,7 +179,7 @@ Located at `~/development/git/trs-os-zds`, this repository contains the source c
   * Masks interrupts (`DI`/`EI`) during multi-byte transfers to prevent timer tasker FIFO overruns.
 
 ### 2.4 `fujinet-firmware`: Multi-Protocol Peripheral Server
-Located at `~/development/git/fujinet-firmware`:
+Provided by [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware):
 * **DriveWire Bus (`BUILD_COCO`):**
   * Implemented in `lib/bus/drivewire/drivewire.cpp` and `lib/device/drivewire/`.
   * Operates over physical UART (`_serial`), USB CDC-ACM, or Becker port / BoIP (`_becker` over TCP port 65504).
@@ -191,8 +191,8 @@ Located at `~/development/git/fujinet-firmware`:
   * Compiles natively on macOS/Linux/Windows (`build/dist/fujinet`).
   * Running `build/dist/fujinet -V` confirms `Target: COCO`.
 
-### 2.5 `nitros9-main`: Reference FujiNet Client Implementations
-Located at `~/development/git/nitros9-main/level1/cmds/fn*.as`:
+### 2.5 `nitros9`: Reference FujiNet Client Implementations
+Provided by [nitros-9/nitros9](https://github.com/nitros-9/nitros9) (`level1/cmds/fn*.as`):
 * Nine reference utilities demonstrate interaction with the FujiNet firmware:
   * `fnstatus.as`: Queries `FUJI$GetAdapterCfg` (0xE8); prints IP, SSID, MAC, version.
   * `fnlisthosts.as`: Queries `FUJI$ReadHostSlots` (0xF4); lists host slots 0–7.
@@ -806,29 +806,29 @@ We provide a dedicated Python packager (`tools/bin_to_cmd.py`) that converts the
 
 This integration synthesizes architecture, codebases, and protocols across five primary repositories:
 
-### 12.1 Primary Repository Directory Paths
+### 12.1 Primary Repositories
 
-| Project / Component | Local Workspace Path | Upstream Repository / Reference | Role in Integration |
-| :--- | :--- | :--- | :--- |
-| **`agon-net-utils`** | `~/development/git/agon-net-utils` | [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils) | Agon Quark MOS utilities (`openstream`, `sendstream`, `closestream`) managing ESP8266 transparent streaming mode (`CIPMODE=1`) for Wi-Fi; not required for direct serial links. |
-| **`trs-net-tcp`** | `~/development/git/trs-net-tcp` | [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp) | Legacy Python TCP/serial disk server (`trs-netd.py`) and protocol evaluation documentation being superseded. |
-| **`trs-os-zds`** | `~/development/git/trs-os-zds` | [rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds) | Core operating system source tree (`TRSDOS_7`), Agon Light 2 patchset, and ZDS II Wine build automation for `TRSDOS.bin`. |
-| **`fujinet-firmware`** | `~/development/git/fujinet-firmware` | [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware) | Target server framework providing DriveWire (`BUILD_COCO`) block I/O, `OP_FUJI` transactions, and BoIP/serial transports. |
-| **`nitros9-main`** | `~/development/git/nitros9-main` | [nitros-9/nitros9](https://github.com/nitros-9/nitros9) | Reference implementations for the 9 FujiNet client utilities targeting DriveWire on NitrOS-9. |
-| **`OSboot` Loader** | N/A (Utility) | [sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) | MOS bootstrap loader for launching `TRSDOS.bin` while maintaining UART1 streaming continuity. |
+| Project / Component | Upstream GitHub Repository | Role in Integration |
+| :--- | :--- | :--- |
+| **`agon-net-utils`** | [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils) | Agon Quark MOS utilities (`openstream`, `sendstream`, `closestream`) managing ESP8266 transparent streaming mode (`CIPMODE=1`) for Wi-Fi; not required for direct serial links. |
+| **`trs-net-tcp`** | [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp) | Legacy Python TCP/serial disk server (`trs-netd.py`) and protocol evaluation documentation being superseded. |
+| **`trs-os-zds`** | [rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds) | Core operating system source tree (`TRSDOS_7`), Agon Light 2 patchset, and ZDS II Wine build automation for `TRSDOS.bin`. |
+| **`fujinet-firmware`** | [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware) | Target server framework providing DriveWire (`BUILD_COCO`) block I/O, `OP_FUJI` transactions, and BoIP/serial transports. |
+| **`nitros9`** | [nitros-9/nitros9](https://github.com/nitros-9/nitros9) | Reference implementations for the 9 FujiNet client utilities targeting DriveWire on NitrOS-9. |
+| **`OSboot` Loader** | [sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) | MOS bootstrap loader for launching `TRSDOS.bin` while maintaining UART1 streaming continuity. |
 
 ### 12.2 NitrOS-9 FujiNet Reference Source Files
 
-The TRSDOS utility suite (`FN*.CMD`) is modeled directly on the following reference commands written in 6809 assembly code from `nitros9-main`:
+The TRSDOS utility suite (`FN*.CMD`) is modeled directly on the following reference commands written in 6809 assembly code from [nitros-9/nitros9](https://github.com/nitros-9/nitros9):
 
-1. `~/development/git/nitros9-main/level1/cmds/fnstatus.as` — Query and format adapter status and Wi-Fi connection state.
-2. `~/development/git/nitros9-main/level1/cmds/fnlisthosts.as` — Enumerate all 8 FujiNet host slots.
-3. `~/development/git/nitros9-main/level1/cmds/fngethost.as` — Display host assignment for an individual slot.
-4. `~/development/git/nitros9-main/level1/cmds/fnsethost.as` — Configure hostname/TNFS address for a host slot.
-5. `~/development/git/nitros9-main/level1/cmds/fnmount.as` — Mount a host slot connection.
-6. `~/development/git/nitros9-main/level1/cmds/fnlistdevs.as` — Enumerate all 8 virtual device (disk) slots.
-7. `~/development/git/nitros9-main/level1/cmds/fngetdevfile.as` — Query mounted disk image path for a device slot.
-8. `~/development/git/nitros9-main/level1/cmds/fnsetdevfile.as` — Assign disk image path and access mode to a device slot.
-9. `~/development/git/nitros9-main/level1/cmds/fnmountimg.as` — Commit/mount disk image for active read/write I/O.
-10. `~/development/git/nitros9-main/lib/fuji.as` — Shared DriveWire `OP_FUJI` transaction protocol engine (`NOpen`, `FBReady`, `FBCmd`, `FBErr`, `FBRead`).
+1. [`level1/cmds/fnstatus.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fnstatus.as) — Query and format adapter status and Wi-Fi connection state.
+2. [`level1/cmds/fnlisthosts.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fnlisthosts.as) — Enumerate all 8 FujiNet host slots.
+3. [`level1/cmds/fngethost.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fngethost.as) — Display host assignment for an individual slot.
+4. [`level1/cmds/fnsethost.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fnsethost.as) — Configure hostname/TNFS address for a host slot.
+5. [`level1/cmds/fnmount.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fnmount.as) — Mount a host slot connection.
+6. [`level1/cmds/fnlistdevs.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fnlistdevs.as) — Enumerate all 8 virtual device (disk) slots.
+7. [`level1/cmds/fngetdevfile.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fngetdevfile.as) — Query mounted disk image path for a device slot.
+8. [`level1/cmds/fnsetdevfile.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fnsetdevfile.as) — Assign disk image path and access mode to a device slot.
+9. [`level1/cmds/fnmountimg.as`](https://github.com/nitros-9/nitros9/blob/main/level1/cmds/fnmountimg.as) — Commit/mount disk image for active read/write I/O.
+10. [`lib/fuji.as`](https://github.com/nitros-9/nitros9/blob/main/lib/fuji.as) — Shared DriveWire `OP_FUJI` transaction protocol engine (`NOpen`, `FBReady`, `FBCmd`, `FBErr`, `FBRead`).
 
