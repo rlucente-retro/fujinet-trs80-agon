@@ -127,19 +127,28 @@ The system supports two physical transports:
 
 ## Native TRSDOS FujiNet Utilities
 
-This suite ports the functionality of the reference NitrOS-9 FujiNet utilities (`~/development/git/nitros9-main/level1/cmds/fn*.as`) to native TRSDOS `.CMD` binaries:
+This suite ports the functionality of the reference NitrOS-9 FujiNet utilities (`~/development/git/nitros9-main/level1/cmds/fn*.as`) to native TRSDOS `.CMD` binaries executable directly from the `TRSDOS Ready` prompt.
+
+> [!NOTE]
+> **Transport Transparency & TRSDOS Independence:**  
+> TRSDOS is **completely unaware** of the physical connection type or whether an intermediate TCP/IP bridge is in use. To TRSDOS, UART1 (`PC0`/`PC1`) is strictly a local 115,200 baud serial interface. When Wi-Fi is used with the MOD-WIFI-ESP8266, Agon Quark MOS handles the AT command connection (`openstream`) before TRSDOS boots; when a direct serial link (MOD-USB-RS232) is used, communication is purely hardware serial. TRSDOS runs no TCP/IP stack.  
+> 
+> Consequently, all `FN*.CMD` utilities communicate over standard serial `OP_FUJI` (0xE2) transactions to configure the **remote FujiNet peripheral device**:
+> - Any network properties reported by `FNSTATUS` (IP address, Wi-Fi SSID, MAC address) belong to the **FujiNet device itself** (its own network interface used to reach TNFS servers or its web config) or the host PC running FujiNet-PC, **not** to the Agon Light 2 or TRSDOS.
+> - When running FujiNet-PC over a direct serial cable without Wi-Fi, `FNSTATUS` displays the host PC's IP and indicates `Direct Serial / Wired` (or N/A) for Wi-Fi SSID.
+> - Remote host and mounting utilities (`FNLISTHOSTS`, `FNMOUNT`, `FNSETDEV`, `FNMOUNTIMG`) instruct the **FujiNet server** to fetch disk images over its own network or local storage and map them to virtual DriveWire drives `:1` through `:7`.
 
 | Utility | Syntax | Purpose |
 | :--- | :--- | :--- |
-| `FNSTATUS` | `FNSTATUS` | Displays FujiNet firmware version, Wi-Fi SSID, IP, MAC, gateway, and connection status. |
-| `FNLISTHOSTS` | `FNLISTHOSTS` | Lists all 8 configured host slots (0–7) and their remote hostnames or TNFS addresses. |
-| `FNGETHOST` | `FNGETHOST <slot>` | Displays the hostname assigned to a specific host slot. |
-| `FNSETHOST` | `FNSETHOST <slot> <hostname>` | Sets or updates the remote hostname/URL for a given host slot. |
-| `FNMOUNT` | `FNMOUNT <slot>` | Mounts a host slot (connects to remote TNFS server or local storage). |
-| `FNLISTDEVS` | `FNLISTDEVS` | Lists all virtual device slots, their mounted filenames, access modes (RO/RW), and mapped drive letters. |
-| `FNGETDEV` | `FNGETDEV <slot>` | Displays the full image path currently mounted in a virtual device slot. |
-| `FNSETDEV` | `FNSETDEV <dev_slot> <host_slot> <mode> <path>` | Configures a device slot with a specific disk image on a host slot. |
-| `FNMOUNTIMG` | `FNMOUNTIMG <dev_slot> [mode] [drive]` | Mounts the disk image in the specified device slot to target TRSDOS Drive `:1` through `:7`. |
+| `FNSTATUS` | `FNSTATUS` | Queries the FujiNet peripheral's adapter configuration, displaying its firmware version, IP address, MAC, and external Wi-Fi/network connection state. |
+| `FNLISTHOSTS` | `FNLISTHOSTS` | Lists all 8 configured host slots (0–7) stored on the FujiNet device (remote TNFS servers, internet URLs, or local SD card). |
+| `FNGETHOST` | `FNGETHOST <slot>` | Displays the hostname/URL assigned to a specific FujiNet host slot. |
+| `FNSETHOST` | `FNSETHOST <slot> <hostname>` | Configures or updates the remote hostname or TNFS URL for a given FujiNet host slot. |
+| `FNMOUNT` | `FNMOUNT <slot>` | Commands the FujiNet device to mount a host slot (connect to remote TNFS server or local storage). |
+| `FNLISTDEVS` | `FNLISTDEVS` | Queries FujiNet's 8 virtual device slots, listing mounted image filenames, access modes (RO/RW), and drive mappings. |
+| `FNGETDEV` | `FNGETDEV <slot>` | Displays the full pathname of the disk image currently mounted in a FujiNet device slot. |
+| `FNSETDEV` | `FNSETDEV <dev_slot> <host_slot> <mode> <path>` | Directs FujiNet to assign a specific disk image on a host slot to a device slot. |
+| `FNMOUNTIMG` | `FNMOUNTIMG <dev_slot> [mode] [drive]` | Mounts the disk image in the specified FujiNet device slot to target TRSDOS Drive `:1` through `:7`. |
 
 ---
 

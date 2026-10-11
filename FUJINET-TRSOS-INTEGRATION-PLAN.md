@@ -42,9 +42,10 @@
    - [6.4 Storage Driver Overhaul (`driver-FDCDVR.S`)](#64-storage-driver-overhaul-driver-fdcdvrs)
    - [6.5 Real-Time Clock & Line Printer Drivers](#65-real-time-clock--line-printer-drivers)
 7. [Native TRSDOS FujiNet Utilities Specification](#7-native-trsdos-fujinet-utilities-specification)
-   - [7.1 Shared Client Library (`FUJILIB.LIB` / `fujilib.s`)](#71-shared-client-library-fujiliblib--fujilibs)
-   - [7.2 Detailed Specification of the 9 Command Utilities](#72-detailed-specification-of-the-9-command-utilities)
-   - [7.3 Command Line Parser & LS-DOS System Interface](#73-command-line-parser--ls-dos-system-interface)
+   - [7.1 Architecture & Peripheral Scope (TRSDOS Transport Decoupling)](#71-architecture--peripheral-scope-trsdos-transport-decoupling)
+   - [7.2 Shared Client Library (`FUJILIB.LIB` / `fujilib.s`)](#72-shared-client-library-fujiliblib--fujilibs)
+   - [7.3 Detailed Specification of the 9 Command Utilities](#73-detailed-specification-of-the-9-command-utilities)
+   - [7.4 Command Line Parser & LS-DOS System Interface](#74-command-line-parser--ls-dos-system-interface)
 8. [Build Pipeline with ZDS II (`ez80asm.exe` via Wine)](#8-build-pipeline-with-zds-ii-ez80asmexe-via-wine)
    - [8.1 Toolchain Configuration](#81-toolchain-configuration)
    - [8.2 TRSDOS `.CMD` Load Module Generation](#82-trsdos-cmd-load-module-generation)
@@ -543,7 +544,23 @@ rd_dw_retry:
 
 ## 7. Native TRSDOS FujiNet Utilities Specification
 
-### 7.1 Shared Client Library (`FUJILIB.LIB` / `fujilib.s`)
+### 7.1 Architecture & Peripheral Scope (TRSDOS Transport Decoupling)
+
+A central architectural principle of this integration is that **TRSDOS has no networking stack and is completely unaware of TCP/IP or the physical link layer**.
+
+1. **Transport Decoupling & OS Transparency:**
+   * Whether the Agon Light 2 connects via **Direct Serial (MOD-USB-RS232)** or **Wi-Fi Streaming (MOD-WIFI-ESP8266)**, TRSDOS experiences the link identically: as a raw, polled serial UART on `UART1` (`PC0`/`PC1`) at 115,200 baud 8-N-1.
+   * In the Wi-Fi configuration, Agon Quark MOS handles the entire AT command negotiation (`openstream`) before TRSDOS is ever launched.
+   * TRSDOS has no socket abstractions, no TCP/IP stack, and no knowledge of network interfaces.
+
+2. **Scope of FujiNet Utilities:**
+   * The `FN*.CMD` command utilities communicate over standard serial `OP_FUJI` (0xE2) transactions to interrogate and configure the **remote FujiNet peripheral device**, not the local Agon hardware.
+   * **Network Status (`FNSTATUS`):** Queries FujiNet's `FUJI$GetAdapterCfg` (0xE8). The resulting IP address, Wi-Fi SSID, Gateway, and MAC address describe the **FujiNet peripheral's own connection to the local LAN / Internet** (used by FujiNet to fetch disk images from remote TNFS servers or serve its web configuration interface), **not** an Agon Light 2 network interface.
+   * **Direct Serial / FujiNet-PC Operation:** When connecting via direct serial to a PC running FujiNet-PC, `FNSTATUS` displays the host PC's IP configuration and indicates `Direct Serial / Wired` (or N/A) for Wi-Fi SSID.
+   * **Host Slot Management (`FNLISTHOSTS`, `FNMOUNT`, etc.):** Tells the **FujiNet server** to open connections to remote TNFS file servers or local SD cards over its own network stack.
+   * **Device Slot Mapping (`FNSETDEV`, `FNMOUNTIMG`):** Binds disk images hosted on FujiNet to virtual DriveWire devices and links them to TRSDOS drives `:1` through `:7`.
+
+### 7.2 Shared Client Library (`FUJILIB.LIB` / `fujilib.s`)
 
 To eliminate code duplication across all utilities, implement a reusable Z80/eZ80 FujiNet client library (`fujilib.s`):
 
@@ -560,7 +577,7 @@ To eliminate code duplication across all utilities, implement a reusable Z80/eZ8
 +-------------------+-----------------------------------------------------------+
 ```
 
-### 7.2 Detailed Specification of the 9 Command Utilities
+### 7.3 Detailed Specification of the 9 Command Utilities
 
 All utilities will be assembled as native TRSDOS load modules (`.CMD` files) executable from the `TRSDOS Ready` prompt:
 
@@ -569,32 +586,46 @@ All utilities will be assembled as native TRSDOS load modules (`.CMD` files) exe
 ┌─────────────┬─────────────────────────────────────────────────────────────────┐
 │ Command     │ Purpose & Usage                                                 │
 ├─────────────┼─────────────────────────────────────────────────────────────────┤
-│ FNSTATUS    │ Display FujiNet firmware version, Wi-Fi SSID, IP, MAC & status  │
-│ FNLISTHOSTS │ Display table of all 8 configured host slots (0–7)              │
-│ FNGETHOST   │ Query and display hostname for a specific host slot             │
-│ FNSETHOST   │ Configure remote hostname or TNFS URL for a host slot           │
-│ FNMOUNT     │ Mount a host slot (connect to remote TNFS server or SD card)    │
-│ FNLISTDEVS  │ List virtual device slots, their mounted files & modes          │
+│ FNSTATUS    │ Display FujiNet peripheral firmware, IP, MAC & network status   │
+│ FNLISTHOSTS │ Display table of FujiNet's 8 configured host slots (0–7)        │
+│ FNGETHOST   │ Query and display hostname for a specific FujiNet host slot     │
+│ FNSETHOST   │ Configure remote hostname or TNFS URL for a FujiNet host slot   │
+│ FNMOUNT     │ Mount a host slot (connect FujiNet to remote TNFS server or SD) │
+│ FNLISTDEVS  │ List FujiNet's 8 virtual device slots, mounted files & modes    │
 │ FNGETDEV    │ Display full pathname of disk image mounted in a device slot    │
-│ FNSETDEV    │ Assign a disk image file and access mode to a device slot       │
-│ FNMOUNTIMG  │ Mount/commit disk image to target TRSDOS drive (:1–:7)          │
+│ FNSETDEV    │ Assign a disk image file on a host slot to a device slot        │
+│ FNMOUNTIMG  │ Mount FujiNet device slot disk image to TRSDOS drive (:1–:7)   │
 └─────────────┴─────────────────────────────────────────────────────────────────┘
 ```
 
 #### 1. `FNSTATUS.CMD`
 * **Syntax:** `FNSTATUS`
 * **Protocol Flow:** Issues `OP_FUJI` + `FUJI$GetAdapterCfg` (0xE8); confirms via `FUJI$GetError`; reads 140 bytes of `AdapterConfig` via `FUJI$GetResponse`.
-* **Output Format:**
+* **Output Format (Hardware FujiNet Peripheral with Wi-Fi):**
   ```text
-  FujiNet Adapter Status:
+  FujiNet Peripheral Status:
     Firmware Version : 1.6-49ca88a0d (COCO)
     Hostname         : fujinet-agon
+    Connection Type  : Wi-Fi (Hardware Peripheral)
     Wi-Fi SSID       : RetroNet-5G
     IP Address       : 192.168.1.150
     Gateway          : 192.168.1.1
     Netmask          : 255.255.255.0
     DNS Server       : 192.168.1.1
     MAC Address      : A4:CF:12:8B:3E:91
+  ```
+* **Output Format (Direct Serial Link to Host PC running FujiNet-PC):**
+  ```text
+  FujiNet Peripheral Status:
+    Firmware Version : 1.6-49ca88a0d (COCO)
+    Hostname         : retropc
+    Connection Type  : Direct Serial Link (Host PC)
+    Wi-Fi SSID       : N/A (Direct Serial / Wired Host)
+    IP Address       : 192.168.1.85
+    Gateway          : 192.168.1.1
+    Netmask          : 255.255.255.0
+    DNS Server       : 192.168.1.1
+    MAC Address      : 02:42:AC:11:00:02
   ```
 
 #### 2. `FNLISTHOSTS.CMD`
@@ -603,7 +634,7 @@ All utilities will be assembled as native TRSDOS load modules (`.CMD` files) exe
 
 #### 3. `FNGETHOST.CMD`
 * **Syntax:** `FNGETHOST <slot>` (`slot` = 0..7)
-* **Protocol Flow:** Queries host slots and displays entry for the specified slot.
+* **Protocol Flow:** Queries host slots on FujiNet and displays entry for the specified slot.
 
 #### 4. `FNSETHOST.CMD`
 * **Syntax:** `FNSETHOST <slot> <hostname>`
@@ -611,7 +642,7 @@ All utilities will be assembled as native TRSDOS load modules (`.CMD` files) exe
 
 #### 5. `FNMOUNT.CMD`
 * **Syntax:** `FNMOUNT <slot>`
-* **Protocol Flow:** Issues `OP_FUJI` + `FUJI$MountHost` (0xF9) + `[slot (1B)]`; verifies status via `FUJI$GetError`.
+* **Protocol Flow:** Issues `OP_FUJI` + `FUJI$MountHost` (0xF9) + `[slot (1B)]`; verifies status via `FUJI$GetError`. Commands FujiNet to connect to the remote TNFS server or local SD card.
 
 #### 6. `FNLISTDEVS.CMD`
 * **Syntax:** `FNLISTDEVS`
@@ -641,7 +672,7 @@ All utilities will be assembled as native TRSDOS load modules (`.CMD` files) exe
   * `drive` (optional): Target TRSDOS drive (`1` through `7`, defaults to `dev_slot + 1`).
 * **Protocol Flow:** Issues `OP_FUJI` + `FUJI$MountImage` (0xF8) + parameters; verifies status; initializes DCT table for target drive (`:1` through `:7`).
 
-### 7.3 Command Line Parser & LS-DOS System Interface
+### 7.4 Command Line Parser & LS-DOS System Interface
 TRSDOS command utilities interface with LS-DOS via standard system SVCs:
 * `@PARAM` (SVC 34): Parses command line tokens and flags.
 * `@DSPLY` (SVC 10): Outputs strings to the console.
