@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Assembly & Build outputs
+*.obj
+*.bin
+*.hex
+*.lod
+*.lst
+*.map
+*.o
+*.cmd
+*.CMD
+
+# Scratch files
+scratch/
