@@ -23,7 +23,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 ## Documentation
 
 * **Detailed Architectural Plan:** [`FUJINET-TRSOS-INTEGRATION-PLAN.md`](FUJINET-TRSOS-INTEGRATION-PLAN.md) — Comprehensive technical specification covering wire protocols, assembly driver modifications, disk format detection, the 9 native TRSDOS utilities, hardware constraints, and phased implementation milestones.
-* **Kickoff Prompt & Requirements:** [`kickoff-prompt.md`](kickoff-prompt.md) — Original scope and requirements document.
+* **Agon OSboot Bootstrap Loader:** [Shawn Sijnstra's OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) — MOS bootstrap utility for booting `TRSDOS.bin` while preserving UART1 streaming connections.
 
 ---
 
@@ -91,10 +91,11 @@ This suite ports the functionality of the reference NitrOS-9 FujiNet utilities (
 
 ---
 
-## Related Repositories
+## Related Repositories & Reference Codebases
 
-* `agon-net-utils`: Agon MOS network utilities (`openstream`, `sendstream`, `closestream`).
-* `trs-net-tcp`: Previous Python-based TCP/serial disk daemon for TRS-OS.
-* `trs-os-zds`: TRS-OS build automation and Agon Light 2 patchset.
-* `fujinet-firmware`: Core multi-platform FujiNet firmware.
-* `nitros9-main`: Reference 6809 assembly FujiNet utilities for NitrOS-9.
+* **`agon-net-utils`** (`~/development/git/agon-net-utils`): Agon Quark MOS network utilities (`openstream`, `sendstream`, `closestream`).
+* **`trs-net-tcp`** (`~/development/git/trs-net-tcp`): Previous Python-based TCP/serial disk daemon for TRS-OS.
+* **`trs-os-zds`** (`~/development/git/trs-os-zds`): TRS-OS build automation and Agon Light 2 patchset.
+* **`fujinet-firmware`** (`~/development/git/fujinet-firmware`): Core multi-platform FujiNet firmware.
+* **`nitros9-main`** (`~/development/git/nitros9-main`): Reference 6809 assembly FujiNet utilities for NitrOS-9 (`level1/cmds/fn*.as`).
+* **`OSboot`** ([sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot)): MOS bootstrap loader for launching `TRSDOS.bin`.
