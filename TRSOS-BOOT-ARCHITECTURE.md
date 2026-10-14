@@ -107,11 +107,22 @@ The transition from Quark MOS to the `TRSDOS Ready` prompt follows a four-step l
   * `-2`: Selects green phosphor text color.
   * `-f`: Commands the VDP to switch to Font 1 (the authentic 8×10 TRS-80 Model 4 font loaded from `TRS80M4pG.F10`).
   * Terminal mode: Selects ADDS25 terminal emulation (default) or VT100 (`-v`).
-* **Binary Loading:**
-  * Reads `TRSDOS.bin` (a 66,048-byte binary) from the microSD card into eZ80 physical address `0x000000`.
-  * Secondary disk image loading is bypassed. A RAM data disk at `0x045300` would be strictly non-persistent (data lost on reboot/power cycle); persistent storage is hosted across FujiNet network drives.
-* **Platform Tagging:** `OSboot` writes the integer value `3` into the eZ80 UART0 Scratchpad Register (`UART0_SPR = 0x03`). This acts as an architectural signature indicating to the guest OS: *"You were launched by OSboot on an Agon Light."*
-* **Execution Transfer:** `OSboot` performs a warm jump to address `0x000000`.
+* **Binary Structure & Memory Layout:**
+  * `TRSDOS.bin` is a **monolithic binary image** structured into two distinct regions:
+    1. **eZ80 Kernel & Slice Tables (66,048 bytes / `0x010200`):** Addresses `0x000000`–`0x00FFFF` contain the 64 KB operating system kernel (`SYS0_IPL` through `SYS6` core). Address `0x010000` holds the 256-byte `Slice 0` table, and `0x010100` holds the 256-byte `Slice 1` table.
+    2. **Bootstrap Volume 0 DiskDISK Image (Appended at `0x010200`):** In the reference system distribution, Volume 0 is a 425,472-byte DiskDISK boot image (`66,048 + 425,472 = 491,520 bytes = 480 KiB`), extending through physical address `0x077FFF`. In a minimal bootstrap deployment, a streamlined DiskDISK image containing the essential kernel overlays and `FN*.CMD` utilities is appended at `0x010200`.
+  * *Note on Binary Sizing:* A standalone 66,048-byte binary contains *only* the kernel and slice pointers without any disk volume. The fully bootable monolithic image deployed to the SD card for `OSboot` is **491,520 bytes (480 KiB)**.
+* **Hardware SRAM Remapping & Loading Sequence:**
+  * In standard Quark MOS operation, Agon Light 2 on-board Flash ROM is mapped at `0x000000`–`0x03FFFF`, while 512 KiB external SRAM is mapped from `0x040000` to `0x0BFFFF`. `OSboot` itself runs as a MOS application loaded at `0x040000`.
+  * Because `0x000000` is initially read-only Flash, `OSboot` cannot directly load `TRSDOS.bin` to address zero.
+  * Instead, `OSboot`:
+    1. Reads `TRSDOS.bin` from microSD into a high-SRAM staging buffer (e.g. `0x080000`).
+    2. Relocates a small execution trampoline into the eZ80 on-chip 8 KiB SRAM (`RAM_ADDR_U` set to `0xFFE000` or `0x0B8000`).
+    3. Executes from on-chip SRAM to reprogram the eZ80 Chip Select registers (`CS0`, `CS1`, `RAM_CTL`), remapping external SRAM down to base `0x000000` and moving Flash ROM out of the lower 64 KB address space.
+    4. Copies the staged binary data to address `0x000000`.
+    5. Writes the platform tag `3` into the UART0 Scratchpad Register (`UART0_SPR = 0x03`).
+    6. Jumps to the entry point at physical address `0x000000` (`__init`).
+* **Bypass of Secondary RAM Disk:** Secondary disk image loading (`[diskfile]` into `0x045300`) is omitted. All secondary and persistent storage is redirected to remote FujiNet drives.
 
 ### Step 2: `TRS-OS` CPU & Platform Setup (`ipl-eZ80_CPU.S`)
 * **Entry (`__init`):** Execution begins at `0x000000` with interrupts disabled (`DI`) in Z80 compatibility mode (`ADL = 0`).
@@ -139,16 +150,21 @@ The transition from Quark MOS to the `TRSDOS Ready` prompt follows a four-step l
 * **The Virtual RAM Slice System:**
   * To run without physical Western Digital floppy disk controller chips, Daniel Paul Martin designed a RAM-based disk system:
   * **Slice 0** is located at `0x010000` in eZ80 RAM. It contains pointers to virtual disk slices.
-  * **Slice 1** is located at `0x010100`. The first 3 bytes provide an offset to the boot volume (Volume 0).
+  * **Slice 1** is located at `0x010100`. The first 3 bytes provide an offset to the boot volume (Volume 0 at `0x010200`).
 * **Mounting Drive `:0` (The Bootstrap Drive):**
-  * `TRSDOS.bin` embeds an authentic minimal LS-DOS system disk directly inside its image in RAM (Slice 1 Volume 0).
-  * Contains only what is necessary to reach the command prompt and mount network storage: the core OS kernel overlays (`SYS0/SYS` through `SYS6/SYS`) and the FujiNet utilities (`FN*.CMD`).
+  * `TRSDOS.bin` embeds an authentic LS-DOS system disk directly inside its image in RAM (Slice 1 Volume 0 at `0x010200`).
   * `ipl-BIOS.s` inspects the first 8 bytes of Volume 0. If it contains `'DiskDISK'`, it extracts the embedded Device Control Table (DCT) parameters (`DCT+3` through `DCT+9`). If flat, it mounts it as a JV1 floppy.
   * Populates `DCT0$` in low memory, sets current cylinder to 0, and reads Sector 0 using the floppy driver (`FDCDVR`).
   * Reads the Granule Allocation Table (GAT) to verify that the disk was formatted by LS-DOS 6.x.
-* **Elimination of Non-Persistent RAM Drive `:1` & Network Mapping:**
-  * Previously, `OSboot` optionally loaded a secondary disk image into high RAM (`0x045300`) as Drive `:1`. Because this RAM disk was non-persistent, any user files or changes were lost on reboot.
-  * Drive `:1` is reassigned as the primary persistent network drive mapped to FujiNet Device Slot 0. All seven drives (`:1` through `:7`) route through the DriveWire block driver to FujiNet Slots 0 through 6 (matching FujiNet Web UI Drives 1 through 7).
+* **Refactoring `ipl-BIOS.s` for Drive `:1` & Network Drives:**
+  * In upstream TRS-OS, `ipl-BIOS.s` unconditionally searched Slice 1 for Volume 1 in RAM, populated `DCT1$`, and executed `CKDRIVE 1, mounterr1`, halting boot if a secondary RAM disk was missing.
+  * For FujiNet integration, `ipl-BIOS.s` is refactored:
+    1. The Volume 1 RAM scan and `CKDRIVE 1` failure halt are neutralized.
+    2. `DCT1$` is initialized with `JP FDCDVR` (`0xC3`) pointing to the DriveWire block driver, marked write-protected (`bit 7, DCT+3 = 1`), and assigned default geometry until an image is attached.
+    3. `DCT2$` through `DCT7$` (which in authentic LS-DOS start with `RET` `0xC9` stubs) are dynamically enabled by `FNMNTIMG` as disk images are attached.
+* **Firmware Device Slot Availability:**
+  * In **Stage 1 (Stock CoCo Firmware Baseline):** Upstream CoCo firmware pins `MAX_DWDISK_DEVICES = 4`. Drives `:1` through `:4` map to FujiNet Device Slots 0 through 3 (FujiNet Web UI Drives 1–4).
+  * In **Stage 2 (Patched Firmware):** With firmware recompiled for `MAX_DWDISK_DEVICES = 8`, all seven drives (`:1` through `:7`) map to Slots 0 through 6 (Web UI Drives 1–7).
 * **Handover to DOS:** Clears the keyboard buffer and executes `GOTO DOSINIT`.
 
 ### Step 4: `TRSDOS / LS-DOS 6.3.1` Initialization (`ipl-DOS.S` $\to$ `ipl-trsdos.s`)
@@ -212,7 +228,8 @@ The ability of a 1983 operating system to execute seamlessly on a modern eZ80 mi
 
 Understanding this layered architecture clarifies exactly where FujiNet integrates:
 
-1. **`OSboot` is untouched:** `OSboot` simply loads `TRSDOS.bin` and configures the screen as it always has.
+1. **`OSboot` is untouched:** `OSboot` loads `TRSDOS.bin` (which embeds bootstrap Volume 0 in RAM at `0x010200`) and reconfigures the screen as it always has.
 2. **`TRS-OS` HAL manages UART1:** `TRS-OS` configures the eZ80's internal UART1 registers during `finish_init`, maintaining the streaming connection to FujiNet across the MOS-to-TRSDOS boundary.
-3. **`driver-FDCDVR.S` redirects network drives:** When LS-DOS requests a sector from a network drive (Drives `:1`–`:7`), `driver-FDCDVR.S` translates the sector request into a DriveWire `OP_READEX` (`0xD2`) packet and streams it over UART1 instead of reading from an in-memory RAM slice. Drive `:0` remains the sole in-memory RAM slice for bootstrapping.
-4. **FujiNet Utilities (`FN*.CMD`) run inside TRSDOS:** Commands like `FNSTATUS`, `FNHOSTS`, and `FNMOUNT` execute from the `TRSDOS Ready` prompt as ordinary LS-DOS command applications, issuing `OP_FUJI` (`0xE2`) serial transactions to configure the external peripheral.
+3. **`driver-FDCDVR.S` redirects network drives:** When LS-DOS requests a sector from a network drive (Drives `:1`–`:4` in Stage 1, expanding to `:1`–`:7` in Stage 2), `driver-FDCDVR.S` translates the sector request into a DriveWire `OP_READEX` (`0xD2`) packet and streams it over UART1 instead of reading from an in-memory RAM slice. Drive `:0` remains the sole in-memory RAM slice for bootstrapping.
+4. **DCT Enablement & Geometry Synchronization:** Authentic LS-DOS marks drives `:2`–`:7` as `RET` stubs by default. When network volumes are mounted via `FNMNTIMG`, the utility enables the target drive's DCT (`JP FDCDVR`), queries the remote image's Sector 0 and directory GAT, and configures the drive's geometry dynamically.
+5. **FujiNet Utilities (`FN*.CMD`) run inside TRSDOS:** Commands like `FNSTATUS`, `FNHOSTS`, and `FNMOUNT` execute from the `TRSDOS Ready` prompt as ordinary LS-DOS command applications, issuing `OP_FUJI` (`0xE2`) serial transactions to configure the external peripheral.
