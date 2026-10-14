@@ -10,11 +10,10 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 
 ## Key Features & Drive Architecture
 
-* **Staged Drive Roles & Local Storage Coexistence:**
-  * **Drive `:0` (Boot Drive):** Dedicated local system volume containing the core OS kernel (`SYS0/SYS`..`SYS6/SYS`) and FujiNet command tools (`FN*.CMD`), booting instantly in under 1 second.
-  * **Drive `:1` (Local Data Drive):** Preserves existing local SD card storage and protection rules.
-  * **Drive `:6` (Network Drive):** Assigned as the initial dedicated network storage drive mapped to FujiNet Device Slot 0, matching the established network routing in `driver-FDCDVR.S` and verified by automated emulator proof.
-  * **Multi-Drive Expansion:** FujiNet's `BUILD_COCO` server provides **4 virtual device slots (Slots 0–3)** and **8 host slots (Slots 0–7)**. Drives `:2` through `:5` can be dynamically mapped to network slots as additional storage.
+* **Staged Drive Roles & Storage Architecture:**
+  * **Drive `:0` (Minimal Bootstrap RAM Drive):** Dedicated minimal in-memory system volume containing only the essential OS kernel (`SYS0/SYS`..`SYS6/SYS`) and FujiNet command tools (`FN*.CMD`), booting in under 1 second with just enough to bootstrap TRS-OS and mount network drives.
+  * **Drives `:1` through `:7` (Seven Network Drives):** TRSDOS/LS-DOS 6.3 natively supports 8 drives (`:0` through `:7`). With Drive `:0` dedicated to bootstrapping, all seven remaining drives (`:1`–`:7`) map directly to FujiNet Device Slots 0 through 6 (corresponding to Drives 1 through 7 in the FujiNet Web UI via `slot = LDRV - 1`).
+  * **Firmware Device Slot Expansion:** While stock CoCo `fujinet-firmware` limits DriveWire to 4 slots (`MAX_DWDISK_DEVICES = 4`), the core FujiNet engine natively supports 8 slots (`MAX_DISK_DEVICES = 8`). Setting `MAX_DWDISK_DEVICES 8` in the firmware unlocks all seven network drives (`:1` through `:7`) simultaneously.
 * **Universal Disk Image Support:**
   * **JV1:** Flat 256-byte sector layout ($LSN \times 256$), with geometry derived dynamically (e.g. Directory Cylinder 17).
   * **DiskDISK:** 256-byte header containing authentic DCT metadata, followed by payload sectors with a 256-byte offset.
@@ -49,10 +48,10 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |  |       TRS-OS Operating System (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)       |  |
 |  |                                                                         |  |
 |  | +-------------------------------+     +-------------------------------+ |  |
-|  | |     LOCAL STORAGE DRIVES      |     |    DriveWire Block Driver     | |  |
-|  | | Drive :0 (Local Boot SD/RAM)  |     |        driver-FDCDVR.S        | |  |
-|  | | Drive :1 (Local Data SD)      |     |   Drive :6 (Network Drive)    | |  |
-|  | | SYS0..SYS6 + FN*.CMD Tools    |     |   (Optional Drives :2 to :5)  | |  |
+|  | |      BOOTSTRAP RAM DRIVE      |     |    DriveWire Block Driver     | |  |
+|  | | Drive :0 (Minimal Boot RAM)   |     |        driver-FDCDVR.S        | |  |
+|  | | SYS0..SYS6 + FN*.CMD Tools    |     | Drives :1..:7 (Net Slots 0-6) | |  |
+|  | | (Bootstrap & Mount Engine)    |     | (1:1 with FujiNet UI 1..7)    | |  |
 |  | +-------------------------------+     +---------------+---------------+ |  |
 |  | | Native FujiNet Utilities      |                     | OP_READEX/WR    |  |
 |  | | (FNSTATUS, FNMOUNT, etc.)     |                     | (0xD2 / 0x57)   |  |
@@ -131,8 +130,8 @@ The system supports two physical transports:
    * If exiting back to MOS, `closestream` sends `+++` with guard times (>20 ms) and `AT+CIPCLOSE` to restore AT command mode.
 
 ### Active TRS-OS Operation (Both Transports)
-* `TRSDOS.bin` boots with Drive `:0` (system files) and Drive `:1` (local SD), presenting the `TRSDOS Ready` prompt.
-* **Drive `:6`** is initialized as the primary network drive mapped to FujiNet Device Slot 0.
+* `TRSDOS.bin` boots with Drive `:0` in RAM (containing minimal system files and `FN*.CMD` tools), presenting the `TRSDOS Ready` prompt to bootstrap and mount network storage.
+* **Drives `:1` through `:7`** are configured as network storage drives mapped 1:1 to FujiNet Device Slots 0 through 6 (matching FujiNet Web UI Drives 1 through 7). Non-persistent RAM drive `:1` and legacy `:6` special-casing are completely eliminated.
 * Disk read I/O occurs via binary DriveWire `OP_READEX` (`0xD2`) commands:
   1. Client sends `0xD2 <slot> <LSN_24>` (5 bytes).
   2. Server returns 256 bytes raw sector data.

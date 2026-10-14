@@ -5,9 +5,9 @@
 **Target Operating System:** TRS-OS (TRSDOS 6.3.1 / LS-DOS 6.3 adapted for eZ80)  
 **Architectural Baseline:**  
 - **Boot Chain:** Agon Quark MOS $\to$ `OSboot.bin` $\to$ `TRS-OS` (eZ80 HAL/BIOS) $\to$ `TRSDOS / LS-DOS 6.3.1` (Z80 mode)  
-- **Local Storage:** Drive `:0` (Local Boot SD / RAM) and Drive `:1` (Local Data SD) preserved untouched.  
-- **Network Mass Storage:** Drive `:6` assigned as the primary Network Data Drive mapped to FujiNet Device Slot 0.  
-- **Multi-Drive Expansion:** Drives `:2` through `:5` configurable for network mounting across FujiNet's 4 virtual device slots (Slots 0–3).  
+- **Minimal Bootstrap Storage:** Drive `:0` (Minimal Bootstrap RAM Drive) containing only the essential OS kernel (`SYS0/SYS`..`SYS6/SYS`) and FujiNet command tools (`FN*.CMD`) to bootstrap and mount network storage. (Non-persistent RAM data disk `:1` is eliminated).
+- **Network Mass Storage:** Drives `:1` through `:7` mapped directly to FujiNet Device Slots 0 through 6 (corresponding to Drives 1 through 7 in the FujiNet Web UI via `slot = LDRV - 1`). Legacy Drive `:6` special-casing is eliminated.
+- **Seven-Drive FujiNet Expansion:** TRSDOS/LS-DOS 6.3 natively supports 8 drives (`:0` through `:7`). With Drive `:0` dedicated to bootstrapping in RAM, all 7 remaining drives (`:1` through `:7`) are supported across FujiNet. While stock CoCo firmware limits DriveWire to 4 slots (`MAX_DWDISK_DEVICES = 4`), the core FujiNet engine natively supports 8 slots (`MAX_DISK_DEVICES = 8`); expanding `MAX_DWDISK_DEVICES` to 8 in the firmware unlocks all seven network drives (`:1`–`:7`) simultaneously.  
 **Host / Coprocessor:** `fujinet-firmware` (`BUILD_COCO` DriveWire Bus over Serial / BoIP)  
 **Toolchain:** Zilog ZDS II (`ez80asm.exe` via Wine) matching `trs-os-zds` (with verified native AgonDev parity)  
 **Physical Transports:**  
@@ -71,16 +71,16 @@ The primary objective of this project is to evolve the network mass storage and 
 
 ### Core Goals:
 1. **Adopt Industry-Standard Protocols with Validated Wire Handshakes:** Replace the legacy ASCII text protocol (`<00012\n`, `@ping\n`, `@bind\n`) with the high-performance binary **DriveWire 3/4** protocol (`OP_READEX = 0xD2`, `OP_WRITE = 0x57`) and the **`OP_FUJI` (0xE2)** transaction protocol.
-2. **Build Upon Established Architecture:** Preserve the proven execution chain (`OSboot` $\to$ `TRS-OS` HAL $\to$ `TRSDOS/LS-DOS 6.3.1`), video/console VDP translation, keyboard routines, 60 Hz timer tasker, and RAM slice virtual floppy drivers for Drives `:0` and `:1`. Replace *only* the legacy line-oriented ASCII networking routines in `driver-FDCDVR.S` and the IPL handshake with binary DriveWire `OP_READEX` (`0xD2`) / `OP_WRITE` (`0x57`) and `OP_FUJI` (`0xE2`), ensuring seamless coexistence between local and network storage.
+2. **Build Upon Established Architecture:** Preserve the proven execution chain (`OSboot` $\to$ `TRS-OS` HAL $\to$ `TRSDOS/LS-DOS 6.3.1`), video/console VDP translation, keyboard routines, 60 Hz timer tasker, and minimal RAM slice virtual floppy driver for Drive `:0`. Replace the legacy line-oriented ASCII networking routines in `driver-FDCDVR.S` and the IPL handshake with binary DriveWire `OP_READEX` (`0xD2`) / `OP_WRITE` (`0x57`) and `OP_FUJI` (`0xE2`), eliminating the non-persistent RAM data disk `:1` in favor of persistent FujiNet network storage.
 3. **Dual Physical Transport Support (Direct Serial & Wi-Fi Streaming):**
    * **Direct Serial Link (e.g., Olimex MOD-USB-RS232):** Direct point-to-point hardware connection between the Agon Light 2 UEXT connector (UART1) and FujiNet hardware or a host PC running FujiNet-PC. Because the physical serial link is inherently present and active upon power-on and hardware reset, no connection handshake is required. Agon Quark MOS directly boots TRS-OS using `*OSboot -2f TRSDOS.bin` without needing `openstream` or `closestream`.
    * **Wi-Fi TCP/IP Streaming (e.g., Olimex MOD-WIFI-ESP8266):** Retains the proven `openstream` $\to$ `OSboot.bin` $\to$ `TRSDOS.bin` workflow where Agon Quark MOS uses AT commands via `openstream` to connect the ESP8266 to FujiNet's BoIP server (TCP port 65504) and enter transparent UART passthrough mode (`CIPMODE=1`), boots TRS-OS, and leaves the transparent stream intact. `closestream` is used if returning to MOS to restore command mode (`AT+CIPMODE=0`).
 4. **Safety-First, Staged Storage Deployment:**
-   * **Stage 1 (Production Baseline):** Preserve existing local SD card storage on Drive `:0` (boot drive) and Drive `:1` (local data drive). Assign **Drive `:6`** as the primary network mass storage volume mapped to FujiNet Device Slot 0, operating in strict **Read-Only** mode to guarantee zero data corruption on host media.
+   * **Stage 1 (Production Baseline):** Preserve minimal Drive `:0` in RAM with just enough system files (`SYS0`..`SYS6`) and `FN*.CMD` utilities to bootstrap. Assign **Drive `:1`** as the primary persistent network mass storage volume mapped to FujiNet Device Slot 0, operating in strict **Read-Only** mode to guarantee zero data corruption on host media.
    * **Stage 2 (Writable Storage & Server Fixes):** Address confirmed upstream firmware flaws in `BUILD_COCO` (disabled write checksum validation, unbounded DSK writes, and ignored flush errors) via server patches and negative regression qualification before enabling writes.
-5. **Capacity & Device Realities:**
-   * Support FujiNet `BUILD_COCO`'s architectural allocation of **4 Virtual Device Slots (Slots 0–3)** and **8 Host Slots (Slots 0–7)**.
-   * Map additional TRSDOS drives (Drives `:2` through `:5`) to FujiNet slots 1–3 as required.
+5. **Seven-Drive FujiNet Network Expansion:**
+   * Support up to **8 Virtual Device Slots (Slots 0–7)** and **8 Host Slots (Slots 0–7)** in FujiNet.
+   * Map all seven TRSDOS network drives (`:1` through `:7`) directly to FujiNet Device Slots 0 through 6 via `slot = LDRV - 1` (corresponding to Drives 1 through 7 in the FujiNet Web UI). Eliminates the non-persistent RAM data disk `:1` and completely removes legacy `:6` special-casing.
 6. **Native TRSDOS Utilities via Wine Toolchain:** Implement native TRSDOS/LS-DOS 6.3 command utilities (`.CMD`) functionally equivalent to the NitrOS-9 FujiNet utilities, complying with TRSDOS's **8-character basename limit**, authentic load-record formatting, and guest SVC interfaces.
 
 ---
@@ -128,11 +128,11 @@ To ensure stability and backward compatibility, the FujiNet integration builds d
 | **Video Display (`*DO`)** | Memory-mapped video at `0xF800`–`0xFFFF` (80×24 / 64×16). | Intercepted in `videoRAM.s`; characters converted to terminal stream over UART0 to ESP32 VDP. | **Preserved Untouched.** Reuses existing VDP translation and authentic TRS-80 font support. |
 | **Keyboard Input (`*KI`)** | Memory-mapped matrix scan ports (`0x3801`–`0x3880`). | Intercepted in `SVC09-keyin.s`; reads ASCII keys received from VDP over UART0. | **Preserved Untouched.** Reuses existing keyboard handler. |
 | **Real-Time Clock** | Hardware heartbeat interrupt (30/60 Hz). | eZ80 Timer 1 (`TMR1`) programmed to fire periodic 60 Hz interrupts; updates `TIME$` and `DATE$`. | **Preserved Untouched.** Maintains 60 Hz task scheduler; optionally updated via `OP_TIME` (`0x23`). |
-| **Local RAM Drives (`:0`, `:1`)** | Physical WD1773 Floppy Disk Controller. | In-memory RAM disk slices (`0x010000` / `0x045300`) managed by `ramdrv$`. | **Preserved Untouched.** Local boot volume (`:0`) and user volume (`:1`) remain fully functional. |
+| **Local RAM Drives** | Physical WD1773 Floppy Disk Controller. | Minimal in-memory RAM disk slice (`0x010000`) for Drive `:0` managed by `ramdrv$`. Non-persistent RAM data disk (`:1` at `0x045300`) eliminated. | **Minimal Bootstrap Baseline.** Drive `:0` contains only kernel (`SYS0`..`SYS6`) and `FN*.CMD` tools to mount persistent network drives. |
 | **System Calls (`SVC`)** | `RST 28h` (RST 40 decimal) vector through Page 1 table. | Authentic Roy Soltoff / Logical Systems LS-DOS 6.3.1 SVC dispatch table. | **Preserved Untouched.** Full LS-DOS 6.3.1 API compatibility maintained. |
 | **File System Manager** | `SYS4/SYS` (Directory parsing, FCBs, file extents, GAT/HIT). | Exact, original binary code from LS-DOS 6.3.1 executed directly by eZ80 CPU. | **Preserved Untouched.** All file parsing and extent management remain authentic. |
 | **UART1 Warm Boot Setup** | Serial communications interface. | Configured during `finish_init` in `SYS0_IPL/ipl-eZ80_CPU.S`. | **Adapted / Preserved.** Solidifies `0001-uart1-streaming.patch` (Port C Mode 7, BRG=10, 8-N-1, IER=0, FCTL=07h). |
-| **Network Disk Driver** | WD1773 FDC or bespoke network controller. | Legacy line-based ASCII protocol (`<XXXXX`, `>XXXXX`) in `driver-FDCDVR.S` for Drive `:6`. | **Replaced.** Overhauled to binary DriveWire `OP_READEX` (`0xD2`) / `OP_WRITE` (`0x57`) for Drive `:6` & `:2`–`:5`. |
+| **Network Disk Driver** | WD1773 FDC or bespoke network controller. | Legacy line-based ASCII protocol (`<XXXXX`, `>XXXXX`) in `driver-FDCDVR.S` for Drive `:6`. | **Replaced.** Overhauled to binary DriveWire `OP_READEX` (`0xD2`) / `OP_WRITE` (`0x57`) for Drives `:1` through `:7` (Slots 0–6). |
 | **IPL Network Startup** | Initial boot handshake. | Legacy `@ping` / `@bind` exchange in `ipl-BIOS.s` / `ipl_net_*.s`. | **Replaced.** Uses `OP_FUJI` Ready query (`0xE2 0x00`) or defers mounting to native `FN*.CMD` tools. |
 | **Line Printer (`*PR`)** | Centronics parallel printer port at I/O port `0xF8`. | Intercepted in `driver-PRDVR.S`. | **Adapted.** Redirects character stream to UART1 `OP_PRINT` (`0x50`) to FujiNet. |
 
@@ -144,10 +144,10 @@ To ensure stability and backward compatibility, the FujiNet integration builds d
 |  |       TRS-OS Operating System (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)       |  |
 |  |                                                                         |  |
 |  | +-------------------------------+     +-------------------------------+ |  |
-|  | |     LOCAL STORAGE DRIVES      |     |    DriveWire Block Driver     | |  |
-|  | | Drive :0 (Local Boot SD/RAM)  |     |        driver-FDCDVR.S        | |  |
-|  | | Drive :1 (Local Data SD)      |     |   Drive :6 (Network Drive)    | |  |
-|  | | SYS0..SYS6 + FN*.CMD Tools    |     |   (Optional Drives :2 to :5)  | |  |
+|  | |      BOOTSTRAP RAM DRIVE      |     |    DriveWire Block Driver     | |  |
+|  | | Drive :0 (Minimal Boot RAM)   |     |        driver-FDCDVR.S        | |  |
+|  | | SYS0..SYS6 + FN*.CMD Tools    |     | Drives :1..:7 (Net Slots 0-6) | |  |
+|  | | (Bootstrap & Mount Engine)    |     | (1:1 with FujiNet UI 1..7)    | |  |
 |  | +-------------------------------+     +---------------+---------------+ |  |
 |  | | Native FujiNet Utilities      |                     | OP_READEX/WR    |  |
 |  | | (FNSTATUS, FNMOUNT, etc.)     |                     | (0xD2 / 0x57)   |  |
@@ -306,8 +306,8 @@ For a comprehensive explanation of the entire three-stage execution chain, memor
      - Enables and flushes hardware FIFOs (`UART1_FCTL = 0x07`).
    * As soon as these local registers are set, the eZ80 UART1 pins immediately resume communication with the external FujiNet peripheral without dropping a single byte!
 4. **BIOS & DOS Initialization:**
-   * `ipl-BIOS.s` configures eZ80 Timer 1 for 60 Hz interrupts and mounts RAM Slice 0 as Drive `:0`.
-   * `ipl-DOS.S` enables interrupts (`EI`) to start the 60 Hz task scheduler, calls `zICNFG`, and enters `zCMNDI` in `SYS6/SYS` to present the `TRSDOS Ready` prompt.
+   * `ipl-BIOS.s` configures eZ80 Timer 1 for 60 Hz interrupts and mounts minimal RAM Slice 0 as Drive `:0` (containing minimal bootstrap files; secondary RAM disk loading is eliminated).
+   * `ipl-DOS.S` enables interrupts (`EI`) to start the 60 Hz task scheduler, calls `zICNFG`, and enters `zCMNDI` in `SYS6/SYS` to present the `TRSDOS Ready` prompt ready to mount persistent network Drives `:1` through `:7`.
 
 ```assembly
 ; =============================================================================
@@ -463,13 +463,24 @@ Server -> Client:  [ Response Payload Bytes... ]
 
 ## 6. TRS-OS Drive Architecture & Storage Management
 
-### 6.1 Local Storage Coexistence & Drive Allocation Policy
+### 6.1 Storage Allocation Policy & Seven-Drive Network Mapping
 
-To ensure high reliability, TRS-OS preserves local storage alongside network drives:
-* **Drive `:0` (Boot Drive):** Dedicated to the local SD card system boot image. Contains kernel overlays and core command tools.
-* **Drive `:1` (Local Data Drive):** Dedicated to local SD card storage, providing immediate local storage even without network connectivity.
-* **Drive `:6` (Primary Network Drive):** Mapped to FujiNet Device Slot 0. This matches the established `net_volume` routing in `driver-FDCDVR.S` and has been verified by emulator execution.
-* **Drives `:2` through `:5` (Expansion Network Drives):** Dynamically configurable for network mounts across FujiNet's remaining device slots (Slots 1–3).
+To ensure high reliability, persistence, and maximum capacity, TRS-OS isolates transient bootstrapping from persistent network storage:
+* **Drive `:0` (Minimal Bootstrap RAM Drive):** Dedicated to the minimal in-memory system volume (`0x010000`). Contains only the essential kernel overlays (`SYS0/SYS`..`SYS6/SYS`) and FujiNet utilities (`FN*.CMD`). Its sole purpose is to boot TRS-OS in under 1 second and provide the command engine to mount persistent network volumes.
+* **Elimination of Non-Persistent RAM Data Disk (`:1`):** Previously, an optional secondary disk was loaded into high RAM (`0x045300`) as Drive `:1`. Because all data written to an eZ80 RAM disk is lost upon reboot or power cycle, this non-persistent drive is removed.
+* **Support for Seven Network Drives (`:1` through `:7`):** TRSDOS / LS-DOS 6.3 natively supports 8 logical drives (`:0` through `:7`) governed by Device Control Tables `DCT0$` through `DCT7$`. With Drive `:0` dedicated to bootstrapping, all seven remaining drives (`:1` through `:7`) map directly to FujiNet Device Slots 0 through 6:
+  * **Drive `:1`** $\longleftrightarrow$ **FujiNet Device Slot 0** (Primary persistent network drive; FujiNet Web UI "Drive 1").
+  * **Drive `:2`** $\longleftrightarrow$ **FujiNet Device Slot 1** (FujiNet Web UI "Drive 2").
+  * **Drive `:3`** $\longleftrightarrow$ **FujiNet Device Slot 2** (FujiNet Web UI "Drive 3").
+  * **Drive `:4`** $\longleftrightarrow$ **FujiNet Device Slot 3** (FujiNet Web UI "Drive 4").
+  * **Drive `:5`** $\longleftrightarrow$ **FujiNet Device Slot 4** (FujiNet Web UI "Drive 5").
+  * **Drive `:6`** $\longleftrightarrow$ **FujiNet Device Slot 5** (FujiNet Web UI "Drive 6").
+  * **Drive `:7`** $\longleftrightarrow$ **FujiNet Device Slot 6** (FujiNet Web UI "Drive 7").
+  *(FujiNet Slot 7 remains available as a spare / swap slot).*
+* **Direct 1:1 Mapping Formula:** $\text{FujiNet Wire Slot} = \text{LDRV} - 1$. In the FujiNet Web UI (which is 1-indexed), the drive number matches the TRSDOS drive number directly ($\text{Web UI Drive } N = \text{TRSDOS Drive } :N$). Legacy `:6` special-casing is completely eliminated.
+* **FujiNet Firmware Capacity:**
+  * While unpatched upstream CoCo firmware sets `MAX_DWDISK_DEVICES 4` in `drivewireFuji.h` (enabling Drives `:1`–`:4`), the underlying FujiNet core `fujiDevice` and configuration system `fnConfig` natively support 8 device slots (`MAX_DISK_DEVICES = MAX_MOUNT_SLOTS = 8`).
+  * Expanding `MAX_DWDISK_DEVICES` to 8 in firmware allows all seven drives (`:1` through `:7`) to operate concurrently.
 
 ### 6.2 Device Control Table (DCT) Management & Write-Protection
 
@@ -481,26 +492,20 @@ Each logical drive in TRS-OS is governed by a 10-byte Device Control Table entry
 
 ### 6.3 Storage Driver Routing & DriveWire Read Integration (`driver-FDCDVR.S`)
 
-The storage driver `driver-FDCDVR.S` is designed to build upon the existing Daniel Paul Martin RAM slice driver, routing local drives `:0` and `:1` to memory while directing Drive `:6` (and expansion drives) to DriveWire:
+The storage driver `driver-FDCDVR.S` builds upon the existing Daniel Paul Martin RAM slice driver, routing minimal bootstrap Drive `:0` to memory while directing persistent Drives `:1` through `:7` to DriveWire:
 
 ```assembly
 ; =============================================================================
 ; Storage Driver Routing Dispatch in driver-FDCDVR.S
-; Preserves existing RAM slice driver while routing network drives to DriveWire
+; Preserves minimal bootstrap RAM driver (:0) while routing Drives :1-:7 to DriveWire
 ; =============================================================================
 FDCDVR:
-        ld      a, (LDRV$)              ; Check requested logical drive
-        cp      0                       ; Drive :0 (Local Boot RAM/SD)?
-        jr      z, call_ramdrv          ; Route to existing in-memory RAM driver
-        cp      1                       ; Drive :1 (Local Data RAM/SD)?
-        jr      z, call_ramdrv          ; Route to existing in-memory RAM driver
-        cp      6                       ; Drive :6 (FujiNet Network Drive)?
-        jr      z, call_drivewire       ; Route to binary DriveWire routines
-        ; (Optionally test drives :2-:5 for expansion network slots)
-        ret                             ; Unsupported drive
-
-call_ramdrv:
-        jp      ramdrv$                 ; Existing Daniel Paul Martin RAM driver (UNTOUCHED)
+        ld      a, (LDRV$)              ; Check requested logical drive (0..7)
+        or      a                       ; Drive :0 (Minimal Bootstrap RAM)?
+        jp      z, ramdrv$              ; Route :0 to in-memory RAM driver
+        cp      8                       ; Drives :1 to :7 valid?
+        jr      c, call_drivewire       ; Route :1 through :7 to DriveWire!
+        ret                             ; Unsupported drive (>= 8)
 
 call_drivewire:
         ; Check operation: read, write, initialize
@@ -519,8 +524,8 @@ rd_drivewire:
         ; 1. Prepare 5-byte OP_READEX Request Header
         ld      a, 0D2h                 ; OP_READEX (0xD2)
         ld      (dw_hdr), a
-        ld      a, (LDRV$)              ; Logical drive (e.g. 6)
-        call    map_drive_to_slot       ; Maps Drive :6 -> Slot 0
+        ld      a, (LDRV$)              ; Logical drive (1..7)
+        dec     a                       ; Maps Drives :1..:7 -> Slots 0..6 (1:1 with FujiNet UI 1..7)
         ld      (dw_hdr+1), a
         xor     a
         ld      (dw_hdr+2), a           ; LSN [23..16]
@@ -713,9 +718,10 @@ The ESP8266 AT firmware requires precise silence intervals for the `+++` escape 
 ```
 +-------------------------------------------------------------------------------+
 | STAGE 1: Baseline Software Proof & Emulator Verification                      |
-| - Verify read-only Drive :6 mapped to FujiNet Slot 0 in Fab Agon emulator.    |
-| - Test directory listing (DIR :6) and file loading (LOAD "ELIZA/BAS:6").      |
-| - Verify write rejection (R_PROTECTED) and local SD (:0/:1) coexistence.      |
+| - Verify minimal bootstrap Drive :0 in RAM booting into TRSDOS Ready.         |
+| - Verify read-only Drive :1 mapped to FujiNet Slot 0 in Fab Agon emulator.    |
+| - Test directory listing (DIR :1) and file loading (LOAD "ELIZA/BAS:1").      |
+| - Verify write rejection (R_PROTECTED); confirm non-persistent RAM :1 removed.|
 +-------------------------------------------------------------------------------+
                                         |
                                         v
@@ -762,7 +768,7 @@ The ESP8266 AT firmware requires precise silence intervals for the `+++` escape 
 +-------------------------------------------------------------------------------+
 | STAGE 7: Safe Media Change Lifecycle & Multi-Drive Expansion                  |
 | - Implement cache invalidation, open-file quiescence, and safe remount.       |
-| - Expand device mapping across Drives :2 through :5.                          |
+| - Expand device mapping across Drives :1 through :7 (FujiNet Slots 0–6).      |
 | - Integrate OP_TIME (0x23) RTC synchronization and OP_PRINT printer spooling. |
 +-------------------------------------------------------------------------------+
                                         |
@@ -784,13 +790,13 @@ The ESP8266 AT firmware requires precise silence intervals for the `+++` escape 
 | **TC-02a** | Direct Serial Handover | Connect MOD-USB-RS232; boot via `OSboot TRSDOS.bin`. | Boots cleanly to TRSDOS Ready; UART1 functions in polled mode. |
 | **TC-02b** | Wi-Fi Handover | Connect MOD-WIFI-ESP8266; run `openstream` $\to$ `OSboot`. | Stream preserved; TRSDOS boots to prompt without freezing. |
 | **TC-03** | Checksum Vectors | Compute checksum across known 256B test vectors. | Matches big-endian unsigned summation $\sum b_i \pmod{65536}$ exactly. |
-| **TC-04** | `OP_READEX` Verification | Read known sector from Drive `:6` via `0xD2` opcode. | 256 bytes read, client checksum sent, status byte `0x00` returned. |
-| **TC-05** | Write Rejection (Stage 1) | Attempt write to Drive `:6` (`SAVE "TEST:6"`). | Immediate `R_PROTECTED` (error 15); host image remains unmodified. |
+| **TC-04** | `OP_READEX` Verification | Read known sector from Drive `:1` via `0xD2` opcode. | 256 bytes read, client checksum sent, status byte `0x00` returned. |
+| **TC-05** | Write Rejection (Stage 1) | Attempt write to Drive `:1` (`SAVE "TEST:1"`). | Immediate `R_PROTECTED` (error 15); host image remains unmodified. |
 | **TC-06** | `FNSTATUS` Verification | Run `FNSTATUS` from TRSDOS Ready prompt. | Correctly parses and prints 140-byte adapter configuration. |
 | **TC-07** | Host Table Management | Run `FNHOSTS` and `FNSETH 0 tnfs.fujinet.online`. | Displays 8 slots (256 bytes); updates and persists slot 0. |
-| **TC-08** | Device Table Query | Run `FNDEVS` from TRSDOS Ready prompt. | Correctly queries 152 bytes; displays 4 device slots (0–3). |
-| **TC-09** | Image Mount & Directory | Mount disk image to slot 0 $\to$ run `DIR :6`. | Directory listing displays files on mounted virtual disk. |
-| **TC-10** | Local Storage Coexistence | Run `DIR :0` and write to `:1` while `:6` is mounted. | Local SD drives operate normally; independent of network status. |
+| **TC-08** | Device Table Query | Run `FNDEVS` from TRSDOS Ready prompt. | Correctly queries device slot table (152B for 4 slots, 304B for 8 slots). |
+| **TC-09** | Image Mount & Directory | Mount disk image to slot 0 $\to$ run `DIR :1`. | Directory listing displays files on mounted virtual disk. |
+| **TC-10** | Bootstrap & Persistence Verification | Boot minimal Drive `:0` in RAM; access persistent network Drives `:1`..`:7`. | System boots cleanly from minimal RAM; persistent network drives operate without data loss across reboots. |
 
 ---
 
