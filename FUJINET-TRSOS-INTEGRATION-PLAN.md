@@ -161,7 +161,7 @@ To ensure stability and backward compatibility, the FujiNet integration builds d
 |  |                                    |                                    |  |
 |  |                                    v                                    |  |
 |  | +---------------------------------------------------------------------+ |  |
-|  | |  driver-UART1.S: Explicit 115200 8-N-1 Polled I/O (IER=0, FCTL=07h)  | |  |
+|  | |  driver-UART1.S: Explicit 115200 8-N-1 Polled I/O (IER=0, FCTL=07h) | |  |
 |  | +----------------------------------+----------------------------------+ |  |
 |  +------------------------------------|------------------------------------+  |
 |                                       | UART1 (PC0/PC1 on UEXT Connector)     |

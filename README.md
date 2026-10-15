@@ -63,7 +63,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |  |                                    |                                    |  |
 |  |                                    v                                    |  |
 |  | +---------------------------------------------------------------------+ |  |
-|  | |  driver-UART1.S: Explicit 115200 8-N-1 Polled I/O (IER=0, FCTL=07h)  | |  |
+|  | |  driver-UART1.S: Explicit 115200 8-N-1 Polled I/O (IER=0, FCTL=07h) | |  |
 |  | +----------------------------------+----------------------------------+ |  |
 |  +------------------------------------|------------------------------------+  |
 |                                       | UART1 (PC0/PC1 on UEXT Connector)     |
@@ -76,7 +76,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |   |   * Always-on physical link   |       |    * Pre-boot: openstream     |   |
 |   |   * Direct: OSboot TRSDOS.bin |       |    * Transparent CIPMODE=1    |   |
 |   +---------------+---------------+       +---------------+---------------+   |
-| +-----------------|---------------------------------------|-----------------+ |
++-------------------|---------------------------------------|-------------------+
                     |                                       |                    
                     | Physical USB CDC-ACM / RS-232         | Wi-Fi (TCP:65504)  
                     v                                       v                    
