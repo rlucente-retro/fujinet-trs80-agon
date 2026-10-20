@@ -1,8 +1,8 @@
-# TRS-OS & LS-DOS Boot Architecture on Agon Light 2
+# TRS-80 & LS-DOS Boot Architecture on Agon Light 2
 
-**Document Version:** 1.2.0  
+**Document Version:** 1.3.0  
 **Target Hardware:** Olimex Agon Light 2 (Zilog eZ80F92 @ 18.432 MHz)  
-**Operating Systems:** Agon Quark MOS $\to$ FNBOOT / OSboot $\to$ TRS-OS (eZ80 HAL/BIOS) $\to$ TRSDOS 6.3.1 / LS-DOS 6.3.1  
+**Operating Systems:** Agon Quark MOS $\to$ FNBOOT / OSboot $\to$ TRS-80 eZ80 HAL/BIOS $\to$ TRSDOS 6.3.1 / LS-DOS 6.3.1  
 
 ---
 

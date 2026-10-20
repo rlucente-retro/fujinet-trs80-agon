@@ -1,10 +1,10 @@
-# Architectural Plan: FujiNet Firmware Integration for TRS-OS on Agon Light 2
+# Architectural Plan: FujiNet Firmware Integration for TRS-80 on Agon Light 2
 
-**Document Version:** 1.6.0  
+**Document Version:** 1.7.0  
 **Target Architecture:** Zilog eZ80F92 (Olimex Agon Light 2)  
-**Target Operating System:** TRS-OS (TRSDOS 6.3.1 / LS-DOS 6.3 adapted for eZ80)  
+**Target Operating System:** TRS-80 Model 4 Environments (TRSDOS 6.3.1 / LS-DOS 6.3 and CP/M on eZ80)  
 **Architectural Baseline:**  
-- **Boot Chain:** Agon Quark MOS $\to$ `FNBOOT` / `OSboot.bin` $\to$ `TRS-OS` (eZ80 HAL/BIOS) $\to$ `TRSDOS / LS-DOS 6.3.1` (Z80 mode)  
+- **Boot Chain:** Agon Quark MOS $\to$ `FNBOOT` / `OSboot.bin` $\to$ `TRS-80 HAL/BIOS` $\to$ `TRSDOS / LS-DOS 6.3.1` (Z80 mode)  
 - **Lean System Image:** `TRSDOS.bin` is a lean **66,048-byte (~64 KiB)** binary containing only the eZ80 kernel, HAL, and slice tables (`0x000000`–`0x0101FF`). The legacy 425 KB embedded RAM disk is completely eliminated, freeing **~448 KiB of external SRAM** for sector caches, RAM disks, or user workspaces.
 - **Pure FujiNet Client & Network Booting:** Drive `:0` boots standard LS-DOS 6.3.1 system disk images directly from FujiNet Device Slot 0 over DriveWire (`OP_READEX` = `0xD2`), providing 100% persistent storage for system configurations and files.
 - **Local SD Card Disk Support:** Updateable (Read/Write) `.dsk` disk images hosted on the Agon Light 2's on-board microSD card (FAT32 filesystem) are mounted directly via eZ80 hardware SPI0 block I/O (`driver-SDDVR.S`).

@@ -1,8 +1,8 @@
-# fujinet-trsos
+# fujinet-trs80-agon
 
-**FujiNet Network Mass Storage and Utility Integration for TRS-OS on Agon Light 2**
+**FujiNet Network Mass Storage and Utility Integration for TRS-80 on Agon Light 2**
 
-This project provides the architecture, driver specifications, and native utility suite to integrate the **[FujiNet](https://fujinet.online)** peripheral framework with **TRS-OS** (TRSDOS 6.3.1 / LS-DOS 6.3 adapted for the Zilog eZ80 on the Olimex Agon Light 2).
+This project provides the architecture, driver specifications, and native utility suite to integrate the **[FujiNet](https://fujinet.online)** peripheral framework with the **TRS-80 Model 4 environment** (TRSDOS 6.3.1 / LS-DOS 6.3 adapted for the Zilog eZ80 on the Olimex Agon Light 2).
 
 It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://github.com/rlucente-retro/trs-net-tcp) with the standard binary **DriveWire 3/4** protocol and **FujiNet (`OP_FUJI`)** transaction architecture, enabling dynamic mounting of local images and remote TNFS shares across virtual disk drives.
 
