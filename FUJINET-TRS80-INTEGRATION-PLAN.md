@@ -35,6 +35,7 @@
    - [2.5 `trs-os-zds`: Agon Light 2 Operating System Core](#25-trs-os-zds-agon-light-2-operating-system-core)
    - [2.6 `fujinet-firmware`: Multi-Protocol Peripheral Server](#26-fujinet-firmware-multi-protocol-peripheral-server)
    - [2.7 `nitros9`: Reference FujiNet Client Implementations](#27-nitros9-reference-fujinet-client-implementations)
+   - [2.8 How TRS-80 Operating Systems Run on the eZ80 Agon Light](#28-how-trs-80-operating-systems-run-on-the-ez80-agon-light)
 3. [Protocol Validation & Hardware Handover](#3-protocol-validation--hardware-handover)
    - [3.1 Validation of Direct Serial Protocol Support](#31-validation-of-direct-serial-protocol-support)
    - [3.2 Verification of Server Silence & Shared Transaction State](#32-verification-of-server-silence--shared-transaction-state)
@@ -103,7 +104,7 @@ The primary objective of this project is to evolve the network mass storage and 
 
 ### 2.1 Architectural Hierarchy: FNBOOT/OSboot, TRS-OS HAL, and TRSDOS/LS-DOS 6.3.1
 
-The execution environment is structured into three cooperating layers, as documented in [`TRSOS-BOOT-ARCHITECTURE.md`](TRSOS-BOOT-ARCHITECTURE.md):
+The execution environment is structured into three cooperating software layers:
 
 ```
 +-------------------------------------------------------------------------------+
@@ -283,6 +284,25 @@ Provided by [nitros-9/nitros9](https://github.com/nitros-9/nitros9) (`level1/cmd
   * `fnlistdevs.as`: Queries `FUJI$ReadDevSlots` (0xF2).
   * `fngetdevfile.as`, `fnsetdevfile.as`, `fnmountimg.as`: Configure and mount disk images.
 * **Wire Protocol Distinction:** The 2-byte expected-response-length prefix seen in NitrOS-9's `lib/fuji.as` is internal to OS-9's `scdwv` SetStat driver interface. It is consumed locally by OS-9 and **must not be transmitted on the wire**.
+
+### 2.8 How TRS-80 Operating Systems Run on the eZ80 Agon Light
+
+The ability of vintage TRS-80 Model 4 operating systems (TRSDOS 6.3.1, LS-DOS 6.3, Montezuma CP/M 2.2) to execute seamlessly on a modern eZ80 microcontroller is made possible by several architectural factors:
+
+1. **eZ80 Z80-Compatibility Mode (`ADL = 0`):**
+   * The Zilog eZ80 processor powers up with full backward compatibility with the Z80 instruction set.
+   * In Z80 mode (`ADL = 0`), the CPU uses 16-bit addresses and 8-bit/16-bit registers identical to an original Z80.
+   * Instructions execute with authentic Z80 semantics, but at roughly 3× the throughput per clock cycle due to pipelining. At 18.432 MHz, the Agon Light behaves like an effective **~54 MHz TRS-80 Model 4**.
+
+2. **Clean Operating System Abstraction (The Power of LS-DOS):**
+   * Unlike systems where programs poked directly into floppy controller chips, LS-DOS was built with a clean supervisor architecture:
+     * File I/O is accessed through `@OPEN`, `@READ`, `@WRITE`, `@CLOSE`.
+     * Console I/O is accessed through `@KEYIN` and `@DSPLY`.
+     * Disk drivers are accessed through standardized Device Control Tables (`DCT`).
+   * Because the Agon HAL replaces low-level hardware drivers while leaving supervisor tables (`Pages 0–3` and `DCTs`) in their exact historical memory locations, the authentic LS-DOS kernel runs completely unaware that physical floppy drives have been replaced by DriveWire network packets and SPI0 flash blocks.
+
+3. **Software Compatibility:**
+   * Any well-behaved TRS-80 Model 4 program that uses standard LS-DOS SVC calls or accesses the screen through standard DOS drivers runs natively on the Agon Light without modification or recompilation.
 
 ---
 

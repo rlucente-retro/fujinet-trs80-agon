@@ -40,8 +40,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 
 ## Documentation
 
-* **Detailed Architectural Plan:** [`FUJINET-TRSOS-INTEGRATION-PLAN.md`](FUJINET-TRSOS-INTEGRATION-PLAN.md) — Comprehensive technical specification covering wire protocols, assembly driver modifications, local SD card block drivers, MOS file utilities, the native TRSDOS utilities, hardware constraints, and phased implementation milestones.
-* **Boot Chain & OS Architecture Guide:** [`TRSOS-BOOT-ARCHITECTURE.md`](TRSOS-BOOT-ARCHITECTURE.md) — Comprehensive explanation of the layered execution model: Quark MOS $\to$ FNBOOT/OSboot $\to$ TRS-OS (eZ80 HAL/BIOS) $\to$ TRSDOS/LS-DOS 6.3.1, including driver preservation and hardware emulation.
+* **Comprehensive Architectural & Integration Specification:** [`FUJINET-TRS80-INTEGRATION-PLAN.md`](FUJINET-TRS80-INTEGRATION-PLAN.md) — Authoritative technical specification covering the three-layer execution model, boot chain, wire protocols, assembly driver modifications, local SD card block drivers, the native TRSDOS/MOS utility suites, hardware constraints, and phased implementation milestones.
 * **Agon OSboot Bootstrap Loader:** [Shawn Sijnstra's OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) — MOS bootstrap utility for booting `TRSDOS.bin` while preserving UART1 streaming connections.
 
 ---
