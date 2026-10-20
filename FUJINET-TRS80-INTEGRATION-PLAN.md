@@ -4,7 +4,7 @@
 **Target Architecture:** Zilog eZ80F92 (Olimex Agon Light 2)  
 **Target Operating System:** TRS-80 Model 4 Environments (TRSDOS 6.3.1 / LS-DOS 6.3 and CP/M on eZ80)  
 **Architectural Baseline:**  
-- **Boot Chain:** Agon Quark MOS $\to$ `FNBOOT` / `OSboot.bin` $\to$ `TRS-80 HAL/BIOS` $\to$ `TRSDOS / LS-DOS 6.3.1` (Z80 mode)  
+- **Boot Chain:** Agon Quark MOS -> `FNBOOT` / `OSboot.bin` -> `TRS-80 HAL/BIOS` -> `TRSDOS / LS-DOS 6.3.1` (Z80 mode)  
 - **Lean System Image:** `TRSDOS.bin` is a lean **66,048-byte (~64 KiB)** binary containing only the eZ80 kernel, HAL, and slice tables (`0x000000`–`0x0101FF`). The legacy 425 KB embedded RAM disk is completely eliminated, freeing **~448 KiB of external SRAM** for sector caches, RAM disks, or user workspaces.
 - **Pure FujiNet Client & Network Booting:** Drive `:0` boots standard LS-DOS 6.3.1 system disk images directly from FujiNet Device Slot 0 over DriveWire (`OP_READEX` = `0xD2`), providing 100% persistent storage for system configurations and files.
 - **Local SD Card Disk Support:** Updateable (Read/Write) `.dsk` disk images hosted on the Agon Light 2's on-board microSD card (FAT32 filesystem) are mounted directly via eZ80 hardware SPI0 block I/O (`driver-SDDVR.S`).
@@ -15,7 +15,7 @@
 - **Pre-Boot & In-DOS Tool Suites:**
   - *Quark MOS Pre-Boot Manager (`FNBOOT`):* Interactive visual browser to configure FujiNet host/device slots and local SD card images prior to OS launch.
   - *MOS File Interchange Tools:* Native utilities (`*TRSDIR`, `*TRSEXT`, `*TRSADD`, `*TRSDEL`, `*TRSNEW`) bridging the Agon FAT32 filesystem and TRSDOS `.dsk` images.
-  - *Native TRSDOS Utilities:* Full $\le 8$-character suite (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`).
+  - *Native TRSDOS Utilities:* Full <= 8-character suite (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`).
 - **Host / Coprocessor:** `fujinet-firmware` (`BUILD_COCO` DriveWire Bus over Serial / BoIP)  
 - **Toolchain:** Zilog ZDS II (`ez80asm.exe` via Wine) matching `trs-os-zds` (with verified native AgonDev parity)  
 - **Physical Transports:**  
@@ -93,7 +93,7 @@ The primary objective of this project is to evolve the network mass storage and 
    * Provide a complete suite of native TRSDOS in-DOS utilities (`FN*.CMD`, `DRVMAP.CMD`, `SDMOUNT.CMD`).
 6. **Dual Physical Transport Support (Direct Serial & Wi-Fi Streaming):**
    * *Direct Serial Link (Olimex MOD-USB-RS232):* Point-to-point hardware connection inherently active at reset; boots directly from MOS via `*FNBOOT` or `*OSboot TRSDOS.bin`.
-   * *Wi-Fi TCP/IP Streaming (Olimex MOD-WIFI-ESP8266):* Retains `openstream` $\to$ `FNBOOT` $\to$ `TRSDOS.bin` workflow where MOS uses AT commands to enter transparent passthrough (`CIPMODE=1`), preserving the active socket across the OS boundary.
+   * *Wi-Fi TCP/IP Streaming (Olimex MOD-WIFI-ESP8266):* Retains `openstream` -> `FNBOOT` -> `TRSDOS.bin` workflow where MOS uses AT commands to enter transparent passthrough (`CIPMODE=1`), preserving the active socket across the OS boundary.
 7. **Safety-First, Staged Storage Deployment:**
    * *Stage 1 (Production Baseline):* Drives `:1`–`:4` (and network `:0`) operate in verified Read-Only mode (`WP`) on stock CoCo firmware (`MAX_DWDISK_DEVICES = 4`) to protect host media while upstream firmware write routines are audited.
    * *Stage 2 (Patched Firmware Expansion):* Firmware recompiled with `MAX_DWDISK_DEVICES 8` unlocks all seven network drives (`:1` through `:7`), with validated write support enabled.
@@ -111,16 +111,16 @@ The execution environment is structured into three cooperating software layers:
 | 1. FNBOOT / OSboot (Agon Quark MOS Environment)                               |
 |    - Quark MOS visual launcher & pre-boot manager (eZ80 Z80 mode).            |
 |    - Configures VDP video/font, manages FujiNet slots & local SD images.      |
-|    - Stages lean 64 KB TRSDOS.bin into SRAM, remaps memory, sets platform tag.|
+|    - Stages 64 KB TRSDOS.bin into SRAM, remaps memory, sets platform tag.     |
 +-------------------------------------------------------------------------------+
                                         |
                                         v Jumps to 0x000000 (__init)
 +-------------------------------------------------------------------------------+
 | 2. TRS-OS (Daniel Paul Martin / FujiNet Port)                                 |
 |    - eZ80 Hardware Abstraction Layer (HAL), BIOS, and Initial Program Loader. |
-|    - Handles CPU registers, eZ80 Timers, UART0 (VDP), UART1 (UEXT), SPI0 (SD).|
-|    - Emulates Model 4 hardware (video RAM, keyboard matrix, floppy controller)|
-|    - Routes Drive :0..:7 to DriveWire (driver-DWDVR) or Local SD (driver-SDDVR|
+|    - Handles CPU registers, timers, UART0 (VDP), UART1 (UEXT), SPI0 (SD).     |
+|    - Emulates Model 4 hardware (video RAM, keyboard, floppy controller).      |
+|    - Routes :0..:7 to DriveWire (driver-DWDVR) or Local SD (driver-SDDVR).    |
 +-------------------------------------------------------------------------------+
                                         |
                                         v Hands off to DOSINIT -> zCMNDI
@@ -128,7 +128,7 @@ The execution environment is structured into three cooperating software layers:
 | 3. TRSDOS / LS-DOS 6.3.1 (Logical Systems Inc. / Tandy)                       |
 |    - Authentic 1980s TRS-80 Model 4 disk operating system.                    |
 |    - Runs in Z80 compatibility mode (ADL = 0) with a standard 64 KB map.      |
-|    - 100% authentic LSI code for SVCs, SYS0..SYS6 overlays, FMS, and CLI.    |
+|    - 100% authentic LSI code for SVCs, SYS0..SYS6 overlays, FMS, and CLI.     |
 |    - Unaware of eZ80/Agon hardware; issues standard Model 4 sector I/O.       |
 +-------------------------------------------------------------------------------+
 ```
@@ -158,7 +158,7 @@ The execution environment is structured into three cooperating software layers:
 |                             AGON LIGHT 2 (CLIENT)                             |
 |                                                                               |
 |  +-------------------------------------------------------------------------+  |
-|  |       TRS-OS Operating System (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)       |  |
+|  |      TRS-80 Model 4 Environment (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)     |  |
 |  |                                                                         |  |
 |  |  +-------------------------------------------------------------------+  |  |
 |  |  |         Storage Driver Router (driver-FDCDVR.S)                   |  |  |
@@ -184,7 +184,7 @@ The execution environment is structured into three cooperating software layers:
 |  |                                      |                                  |  |
 |  |                                      v                                  |  |
 |  |  +-------------------------------------------------------------------+  |  |
-|  |  | driver-UART1.S: Explicit 115200 8-N-1 Polled I/O (IER=0, FCTL=07h)|  |  |
+|  |  |    driver-UART1.S: Explicit 115200 8-N-1 I/O (IER=0, FCTL=07h)    |  |  |
 |  |  +-----------------------------------+-------------------------------+  |  |
 |  +--------------------------------------|----------------------------------+  |
 |              | eZ80 SPI0                | UART1 (PC0/PC1 on UEXT Connector)   |
@@ -193,8 +193,8 @@ The execution environment is structured into three cooperating software layers:
 |     | Agon MicroSD     |   |                         |                        |
 |     | (Local FAT32     |   v Option A: Direct Serial v Option B: Wi-Fi        |
 |     |  .DSK Files)     |   +-----------------------+ +----------------------+ |
-|     |                  |   | Olimex MOD-USB-RS232  | | Olimex MOD-WIFI-ESP8266|
-|     | * Local boot/data|   | * Always-on link      | | * Pre-boot:openstream| |
+|     |                  |   | Olimex MOD-USB-RS232  | | Olimex MOD-WIFI-ESP  | |
+|     | * Local boot/data|   | * Always-on link      | | * MOS: openstream    | |
 |     | * Updateable RW  |   | * Direct MOS: FNBOOT  | | * CIPMODE=1 stream   | |
 |     +------------------+   +-----------+-----------+ +----------+-----------+ |
 +----------------------------------------|------------------------|-------------+
@@ -246,10 +246,10 @@ Provided by [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/ag
 ### 2.4 `trs-net-tcp`: Existing Host Daemon & Protocol
 Provided by [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp), this repository provides `trs-netd.py`:
 * **Wire Protocol:** ASCII line-oriented protocol with `\n` line delimiters:
-  * Read Sector: `<00012\n` $\to$ Returns 256 bytes raw data + 4 bytes big-endian checksum (`sum % 256`).
-  * Write Sector: `>00012\n` + 256B payload + 4B checksum $\to$ Returns 4B calculated checksum.
+  * Read Sector: `<00012\n` -> Returns 256 bytes raw data + 4 bytes big-endian checksum (`sum % 256`).
+  * Write Sector: `>00012\n` + 256B payload + 4B checksum -> Returns 4B calculated checksum.
   * Spool Character: `#<ascii_code>\n`.
-  * Control Commands: `@ping\n` $\to$ `@pong\n`, `@bind\n` $\to$ `@bound\n` + 256B DiskDISK header.
+  * Control Commands: `@ping\n` -> `@pong\n`, `@bind\n` -> `@bound\n` + 256B DiskDISK header.
 * **Characteristics:** Pure request-response; completely silent upon connection until client transmits. Bound to a single disk file (`Volumes/sys720k.dsk`) at daemon launch.
 
 ### 2.5 `trs-os-zds`: Agon Light 2 Operating System Core
@@ -270,7 +270,7 @@ Provided by [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujine
   * Implements `OP_READEX` (0xD2), `OP_WRITE` (0x57), `OP_PRINT` (0x50), `OP_TIME` (0x23), and `OP_FUJI` (0xE2).
 * **FujiNet Config Engine (`fujiDevice`):**
   * Manages 8 Host Slots (0–7) and 4 Device Slots (0–3).
-  * Interfaced via three-phase `OP_FUJI` transactions: execute command $\to$ query error $\to$ read response.
+  * Interfaced via three-phase `OP_FUJI` transactions: execute command -> query error -> read response.
   * **Shared Transaction Buffer:** Server maintains a single response buffer across client interactions. Responses survive TCP reconnects until drained.
 * **FujiNet-PC:**
   * Compiles natively on macOS/Linux/Windows (`build/dist/fujinet`).
@@ -337,12 +337,12 @@ Empirical validation on host loopback demonstrates:
    * It copies the 64 KB kernel to address `0x000000`, sets terminal font/colors via internal UART0, writes the platform signature `3` into `UART0_SPR`, and jumps to `0x000000` (`__init`).
 2. **`TRS-OS` HAL Startup (`ipl-eZ80_CPU.S`):**
    * Enters at `__init` with interrupts disabled (`DI`).
-   * Reads `UART0_SPR`. Detecting `3` $\implies$ branches to `NOINITIAL` (warm boot), preserving MOS memory layouts and VDP terminal settings.
+   * Reads `UART0_SPR`. Detecting `3` => branches to `NOINITIAL` (warm boot), preserving MOS memory layouts and VDP terminal settings.
 3. **Preserving the Streaming Connection across the Boundary:**
    * When `openstream` finished in MOS via `mos_uclose()`, MOS zeroed UART1 control registers.
    * In `finish_init`, `TRS-OS` executes explicit hardware reinitialization:
      - Re-asserts Port C Mode 7 (`PC0` = TXD1, `PC1` = RXD1).
-     - Loads BRG divisor 10 ($18.432\text{ MHz} / (16 \times 115,200)$).
+     - Loads BRG divisor 10 (18.432 MHz / (16 * 115,200)).
      - Sets Line Control to 8-N-1 (`UART1_LCTL = 0x03`).
      - Zeroes `UART1_IER` (`0x00`) to enforce pure polled I/O and prevent stray interrupt lockups.
      - Enables and flushes hardware FIFOs (`UART1_FCTL = 0x07`).
@@ -407,9 +407,9 @@ fn_uart_init:
 
 | Format | Header Size | Sector Size | Addressing | Offset Formula | Characteristics |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **JV1** | 0 bytes | 256 bytes | Floppy ($LSN \le 16384$) | $LSN \times 256$ | Flat raw sectors; directory cylinder typically Track 17. |
-| **DiskDISK** | 256 bytes | 256 bytes | Floppy ($LSN \le 16384$) | $256 + (LSN \times 256)$ | Authentic 256B header; bytes F9h–FFh match 7 DCT parameters. |
-| **Reed HDV** | 256 bytes | 256 bytes | Hard Disk ($LSN > 16384$) | $256 + (LSN \times 256)$ | Signature `56 CB`h; geometry fields in header; requires hard disk driver. |
+| **JV1** | 0 bytes | 256 bytes | Floppy (LSN <= 16384) | LSN * 256 | Flat raw sectors; directory cylinder typically Track 17. |
+| **DiskDISK** | 256 bytes | 256 bytes | Floppy (LSN <= 16384) | 256 + (LSN * 256) | Authentic 256B header; bytes F9h–FFh match 7 DCT parameters. |
+| **Reed HDV** | 256 bytes | 256 bytes | Hard Disk (LSN > 16384) | 256 + (LSN * 256) | Signature `56 CB`h; geometry fields in header; requires hard disk driver. |
 
 ### 4.2 Header Offset Handling & Container Translation
 
@@ -421,7 +421,7 @@ FujiNet's unpatched `mediaTypeDSK.cpp` treats disk files as raw flat byte stream
   3. If the first 8 bytes match ASCII `'DiskDISK'`, it sets `dw_offset[slot] = 1`.
   4. If LSN 0 does not match `'DiskDISK'`, the image is treated as a flat raw JV1 image, setting `dw_offset[slot] = 0`.
   5. During active sector I/O in `driver-FDCDVR.S`, the driver adds `dw_offset[slot]` to the calculated `fdc_no_sum` before constructing the 5-byte `OP_READEX` / `OP_WRITE` request header:
-     $$\text{Wire LSN} = \text{fdc\_no\_sum} + \text{dw\_offset}[\text{slot}]$$
+     **Wire LSN = fdc_no_sum + dw_offset[slot]**
   This guarantees 100% transparent support for both flat JV1 and authentic DiskDISK containers without requiring server-side container parsing.
 
 ### 4.3 Dynamic Geometry Derivation & DCT Synchronization
@@ -433,16 +433,16 @@ Because DriveWire does not transmit disk geometry metadata during mounting, TRSD
   2. Byte 2 of Sector 0 contains the Directory Cylinder index (typically Track 17 / `11h`).
   3. Reads Sector 0 of the directory cylinder to fetch the Granule Allocation Table (GAT).
   4. Byte `0xCB` of the GAT confirms the formatting DOS version (`0x60` for LS-DOS 6.x).
-  5. Byte `0xCC` contains cylinders in excess of 35 ($\text{Max Cylinders} = 35 + \text{byte}_{CC}$).
+  5. Byte `0xCC` contains cylinders in excess of 35 (`Max Cylinders = 35 + byte_CC`).
   6. Byte `0xCD` contains media configuration flags (Bit 7: System/Data, Bit 6: Density, Bit 5: Sides).
   7. Writes the derived parameters into `DCTn$+3`..`DCTn$+9`.
 * **DCT Vector Activation:** Authentic LS-DOS initial state leaves `DCT2$` through `DCT7$` configured as inactive `RET` stubs (`0xC9`). After populating the geometry, the mount routine writes opcode `0xC3` (`JP FDCDVR`) to `DCTn$`, activating the drive vector in the running OS.
 
 ### 4.4 HDV Hard Disk Support vs. Floppy Driver Addressing Bounds
 
-While the DriveWire protocol packet format carries **24-bit LSNs** capable of addressing up to 4 GB ($2^{24} \times 256$ bytes):
-* **Floppy Driver Geometric Limit:** The standard TRS-OS floppy driver (`driver-FDCDVR.S`) calculates sectors using an 8-bit cylinder register (`D`), sectors per track from DCT (`DCT+7 & 1Fh + 1`), and a 16-bit accumulator `fdc_no_sum`. This caps addressing through the floppy driver at $256 \times 64 = 16,384 \text{ sectors} = \mathbf{4\text{ MiB}}$.
-* **High-Capacity HDV Architecture:** True 5 MB to 32 MB HDV support requires a dedicated hard disk driver architecture (e.g. `RHDVR` / partition driver) rather than routing wide LSNs through the floppy disk driver. Stage 1 focuses on standard floppy geometries ($\le 4\text{ MiB}$).
+While the DriveWire protocol packet format carries **24-bit LSNs** capable of addressing up to 4 GB (2^24 * 256 bytes):
+* **Floppy Driver Geometric Limit:** The standard TRS-OS floppy driver (`driver-FDCDVR.S`) calculates sectors using an 8-bit cylinder register (`D`), sectors per track from DCT (`DCT+7 & 1Fh + 1`), and a 16-bit accumulator `fdc_no_sum`. This caps addressing through the floppy driver at 256 * 64 = 16,384 sectors = **4 MiB**.
+* **High-Capacity HDV Architecture:** True 5 MB to 32 MB HDV support requires a dedicated hard disk driver architecture (e.g. `RHDVR` / partition driver) rather than routing wide LSNs through the floppy disk driver. Stage 1 focuses on standard floppy geometries (<= 4 MiB).
 
 ---
 
@@ -482,13 +482,13 @@ Server -> Client:  [ Status (1B) ]                                              
 
 The checksum is the unsigned 16-bit summation of all 256 payload bytes, transmitted **big-endian** (MSB first, LSB second):
 
-$$\text{Checksum} = \left( \sum_{i=0}^{255} \text{byte}_i \right) \pmod{65536}$$
+**Checksum = sum(byte_0 .. byte_255) % 65536**
 
 **Deterministic Test Vectors:**
-* 256 bytes of `0x00` $\implies$ Checksum = `0x0000`
-* 256 bytes of `0xFF` $\implies$ Checksum = `0xFF00`
-* Sequential bytes `0x00` through `0xFF` $\implies$ Checksum = `0x7F80`
-* 256 bytes of `0x5A` $\implies$ Checksum = `0x5A00`
+* 256 bytes of `0x00` => Checksum = `0x0000`
+* 256 bytes of `0xFF` => Checksum = `0xFF00`
+* Sequential bytes `0x00` through `0xFF` => Checksum = `0x7F80`
+* 256 bytes of `0x5A` => Checksum = `0x5A00`
 
 ### 5.3 Audit of Upstream Server Write Defects & Safety Mitigation
 
@@ -534,8 +534,8 @@ TRS-OS replaces the artificial in-memory RAM disk with a flexible multi-tier sto
 #### The Three Operating Modes:
 1. **Mode 1: Pure Network Boot (Diskless Cloud Client):**
    * Drives `:0` through `:7` are hosted remotely on FujiNet / TNFS.
-   * Logical Drive `:0` $\longleftrightarrow$ FujiNet Device Slot 0 (Network Boot System Volume).
-   * Drives `:1` through `:7` $\longleftrightarrow$ FujiNet Device Slots 1 through 7.
+   * Logical Drive `:0` <-> FujiNet Device Slot 0 (Network Boot System Volume).
+   * Drives `:1` through `:7` <-> FujiNet Device Slots 1 through 7.
    * The Agon's local microSD card acts strictly as a "Boot ROM" holding MOS and the lean 64 KB `TRSDOS.bin` kernel.
 2. **Mode 2: Pure Local Boot (Standalone / Offline Workstation):**
    * Drives `:0` through `:3` are mounted from local `.dsk` files on the Agon Light 2's on-board microSD card via direct eZ80 SPI0 block I/O (`driver-SDDVR.S`).
@@ -544,8 +544,8 @@ TRS-OS replaces the artificial in-memory RAM disk with a flexible multi-tier sto
 3. **Mode 3: Hybrid Operation (Cross-Tier Interoperability):**
    * Combines local SD card storage and remote FujiNet storage simultaneously (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image).
    * Authentic TRSDOS commands work seamlessly across tiers:
-     - `COPY FILE:0 TO :1` $\implies$ Reads from remote TNFS cloud via DriveWire and writes directly to local Agon microSD flash via SPI0!
-     - `BACKUP :0 TO :1` $\implies$ Clones an entire remote network disk image onto local SD card storage.
+     - `COPY FILE:0 TO :1` => Reads from remote TNFS cloud via DriveWire and writes directly to local Agon microSD flash via SPI0!
+     - `BACKUP :0 TO :1` => Clones an entire remote network disk image onto local SD card storage.
 
 ### 6.2 Device Control Table (DCT) Management & Dynamic Vector Enablement
 
@@ -556,7 +556,7 @@ Each logical drive in TRS-OS is governed by a 10-byte Device Control Table entry
   * **Dynamic Activation:** When an image is mounted to Drive `:2`..`:7`, the mount utility writes opcode `0xC3` (`JP FDCDVR`) to byte 0 of `DCTn$`, activating the drive vector in the running operating system.
 * `DCT+3`: Drive status flags. **Bit 7 is set to 1 to enforce Write Protection** on network drives during Stage 1.
 * `DCT+4`: Cylinder count and head configuration (Bit 5 set = 2 heads / double-sided).
-* `DCT+6`: Maximum cylinders ($N - 1$).
+* `DCT+6`: Maximum cylinders (N - 1).
 * `DCT+7`: Sectors per track configuration.
 * `DCT+9`: Directory cylinder index (typically Track 17 / `11h`). Dynamically populated upon mount.
 
@@ -575,7 +575,7 @@ The storage driver `driver-FDCDVR.S` functions as an I/O router, dispatching sec
                       +--------+----------------+--------+
                                |                |
              Local SD Target   |                | FujiNet Slot Target
-             (e.g. Drives :0, :1)               | (e.g. Drives :2 through :7)
+        (e.g. Drives :0, :1)   |                | (e.g. Drives :2 through :7)
                                v                v
                      +------------------+     +------------------+
                      |  driver-SDDVR.S  |     |  driver-DWDVR.S  |
@@ -591,13 +591,13 @@ The storage driver `driver-FDCDVR.S` functions as an I/O router, dispatching sec
 
 #### 1. Local SD Block Driver Architecture (`driver-SDDVR.S`)
 * Interfaces directly with the Agon Light 2's on-chip eZ80 SPI0 registers (`SPI_CTL`, `SPI_SR`, `SPI_RBR`, `SPI_TBR`) and Port B GPIOs (`PB1`=MOSI, `PB2`=MISO, `PB3`=SCK, `PB4`=`/CS`).
-* **Block Translation:** SD card sectors are 512 bytes; TRSDOS sectors are 256 bytes ($1\text{ SD Block} = 2\text{ TRSDOS Sectors}$).
-  $$\text{SD LBA} = \text{BaseLBA} + \left\lfloor \frac{LSN}{2} \right\rfloor, \quad \text{Sub-sector} = LSN \pmod 2$$
+* **Block Translation:** SD card sectors are 512 bytes; TRSDOS sectors are 256 bytes (1 SD Block = 2 TRSDOS Sectors).
+  **SD LBA = BaseLBA + floor(LSN / 2), Sub-sector = LSN % 2**
 * Reads issue `CMD17` (READ_SINGLE_BLOCK) and copy the targeted 256-byte half into the user buffer.
 * Writes issue `CMD17` into a sector buffer, modify the targeted 256-byte half, and commit via `CMD24` (WRITE_SINGLE_BLOCK).
 
 #### 2. DriveWire Block Driver Architecture (`driver-DWDVR.S`)
-* Natural 1:1 mapping across network drives: $\text{FujiNet Wire Slot} = \text{LDRV}$.
+* Natural 1:1 mapping across network drives: `FujiNet Wire Slot = LDRV`.
 * Formulates 5-byte `OP_READEX` (`0xD2`) headers, streams 256-byte payloads, calculates 16-bit big-endian checksums, and evaluates 1-byte status codes.
 
 ```assembly
@@ -696,7 +696,7 @@ fdc_rd_err:
   5. `Minute`: `now->tm_min` (0–59).
   6. `Second`: `now->tm_sec` (0–59).
 
-  **Year Modulo-100 Normalization:** `driver-TOD.S` normalizes POSIX `tm_year` ($126 \to 26$) before storing in LS-DOS `DATE$` cells, guaranteeing seamless Y2K+ compatibility.
+  **Year Modulo-100 Normalization:** `driver-TOD.S` normalizes POSIX `tm_year` (126 -> 26) before storing in LS-DOS `DATE$` cells, guaranteeing seamless Y2K+ compatibility.
 
 ---
 
@@ -732,7 +732,7 @@ Executed from the Quark MOS `*` prompt before launching TRSDOS:
 
 ### 7.3 Eight-Character Basename Compliance & Command Summary
 
-Conforming to the LS-DOS 6.x constraint of **$\le 8$-character basenames**:
+Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
 
 | Utility | Syntax | Opcode / Target | Description |
 | :--- | :--- | :--- | :--- |
@@ -757,7 +757,7 @@ Conforming to the LS-DOS 6.x constraint of **$\le 8$-character basenames**:
 
 #### 2. `FNHOSTS.CMD`
 * **Syntax:** `FNHOSTS`
-* **Payload:** Issues `OP_FUJI` + `0xF4` (`FUJI$GetHostSlots`); reads 256 bytes (8 slots $\times$ 32 bytes). Displays slot index (0–7) and hostname string for each non-empty entry.
+* **Payload:** Issues `OP_FUJI` + `0xF4` (`FUJI$GetHostSlots`); reads 256 bytes (8 slots * 32 bytes). Displays slot index (0–7) and hostname string for each non-empty entry.
 
 #### 3. `FNGETH.CMD`
 * **Syntax:** `FNGETH <slot>` (`slot` = 0..7)
@@ -773,7 +773,7 @@ Conforming to the LS-DOS 6.x constraint of **$\le 8$-character basenames**:
 
 #### 6. `FNDEVS.CMD`
 * **Syntax:** `FNDEVS`
-* **Payload:** Issues `OP_FUJI` + `0xF2` (`FUJI$GetDevSlots`). Reads 152 bytes (4 device slots $\times$ 38 bytes: 1B HostSlot, 1B Mode, 36B Filename) in Stage 1, or 304 bytes (8 device slots) in Stage 2. Displays virtual device slot assignments.
+* **Payload:** Issues `OP_FUJI` + `0xF2` (`FUJI$GetDevSlots`). Reads 152 bytes (4 device slots * 38 bytes: 1B HostSlot, 1B Mode, 36B Filename) in Stage 1, or 304 bytes (8 device slots) in Stage 2. Displays virtual device slot assignments.
 
 #### 7. `FNGETDEV.CMD`
 * **Syntax:** `FNGETDEV <slot>` (`slot` = 0..7)
@@ -848,15 +848,15 @@ A dedicated Python packaging tool (`tools/bin_to_cmd.py`) processes linked binar
 ### 9.1 Physical Wire Timing & Bandwidth Ceilings
 
 At 115,200 baud (8 data bits, 1 stop bit, no parity = 10 bits per character frame):
-* 1 byte requires $86.8\ \mu\text{s}$ of physical wire time.
+* 1 byte requires 86.8 µs of physical wire time.
 * A complete 264-byte sector transaction (`OP_READEX` 5B header + 256B payload + 2B checksum + 1B status) requires **22.92 ms minimum wire time**.
 * Theoretical maximum sector read throughput is **10.9 KiB/s**, before host I/O, network latency, and server turnarounds.
 * At 230,400 baud, minimum wire time drops to **11.46 ms** (payload ceiling ~21.8 KiB/s).
 
 ### 9.2 UART FIFO Overrun Protection & 60 Hz Timer Clock Drift
 
-* **FIFO Constraints:** The eZ80 hardware UART1 FIFO holds only 16 bytes, representing **1.39 ms of buffer time** at 115,200 baud. If byte polling is interrupted or delayed by $\ge 1.39\text{ ms}$, a FIFO Overrun Error (OE) occurs.
-* **60 Hz Timer Tick Suppression & Clock Drift:** Timer 1 generates a periodic 60 Hz interrupt ($16.67\text{ ms}$). Because a single 264-byte `OP_READEX` transaction takes $\ge 22.92\text{ ms}$, holding interrupts disabled (`DI`) continuously throughout the sector transfer drops timer ticks.
+* **FIFO Constraints:** The eZ80 hardware UART1 FIFO holds only 16 bytes, representing **1.39 ms of buffer time** at 115,200 baud. If byte polling is interrupted or delayed by >= 1.39 ms, a FIFO Overrun Error (OE) occurs.
+* **60 Hz Timer Tick Suppression & Clock Drift:** Timer 1 generates a periodic 60 Hz interrupt (16.67 ms). Because a single 264-byte `OP_READEX` transaction takes >= 22.92 ms, holding interrupts disabled (`DI`) continuously throughout the sector transfer drops timer ticks.
 * **Mitigation Architecture:**
   1. **Surgical Interrupt Bracketing:** Mask interrupts (`DI`) only during burst transfers (5B header, 256B payload, 2B checksum, 1B status). Re-enable interrupts (`EI`) during checksum computation and inter-packet turnarounds.
   2. **Periodic RTC Resynchronization:** Query FujiNet's `OP_TIME` (`0x23`) during idle periods to resynchronize the TRS-OS system time-of-day clock against network time.
@@ -865,7 +865,7 @@ At 115,200 baud (8 data bits, 1 stop bit, no parity = 10 bits per character fram
 ### 9.3 ESP8266 `+++` Control Escape Timing & Binary Transparency
 
 When using MOD-WIFI-ESP8266 in transparent streaming mode (`CIPMODE=1`), escaping back to AT command mode requires the standard Hayes-compatible escape sequence `+++`:
-* Requires $>20\text{ ms}$ silence before first `+`, $<20\text{ ms}$ between each `+`, and $>20\text{ ms}$ silence after the third `+`.
+* Requires > 20 ms silence before first `+`, < 20 ms between each `+`, and > 20 ms silence after the third `+`.
 * **Binary Transparency:** Any arbitrary binary sector data containing the sequence `+++` (`0x2B 0x2B 0x2B`) will **not** trigger escape mode because disk sectors stream continuously without matching silence guard intervals.
 
 ---
@@ -880,7 +880,7 @@ STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:4 / Slots
 +-------------------------------------------------------------------------------+
 | PHASE 1: Lean Kernel & Network Boot Proof                                     |
 | - Build lean ~64 KB TRSDOS.bin (eliminating embedded 425 KB RAM disk).        |
-| - Verify pure network boot of Drive :0 from FujiNet Slot 0 in emulator/bench.  |
+| - Verify pure network boot of Drive :0 from FujiNet Slot 0 in emulator/bench. |
 | - Test directory listing (DIR :0) and file loading (LOAD "ELIZA/BAS:0").      |
 | - Verify write rejection (R_PROTECTED / Error 15) on network drives.          |
 +-------------------------------------------------------------------------------+
@@ -907,7 +907,7 @@ STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:4 / Slots
 | PHASE 4: Pre-Boot & In-DOS Utility Suites                                     |
 | - Implement FNBOOT visual manager in Quark MOS.                               |
 | - Implement MOS file interchange tools (*TRSDIR, *TRSEXT, *TRSADD, *TRSNEW).  |
-| - Implement FN*.CMD suite (FNSTATUS, FNHOSTS, FNMOUNT, FNDEVS, FNSETDEV, etc).|
+| - Implement FN*.CMD suite: FNSTATUS, FNHOSTS, FNMOUNT, FNDEVS, FNSETDEV, etc. |
 | - Implement DRVMAP.CMD (unified drive mapping) and SDMOUNT.CMD.               |
 +-------------------------------------------------------------------------------+
                                         |
@@ -915,7 +915,7 @@ STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:4 / Slots
 +-------------------------------------------------------------------------------+
 | PHASE 5: Physical Hardware Bench Qualification                                |
 | - Qualify Direct Serial Link (MOD-USB-RS232) on Agon Light 2 hardware.        |
-| - Qualify Wi-Fi TCP/IP Streaming (MOD-WIFI-ESP8266) with openstream/closestream.|
+| - Qualify Wi-Fi TCP/IP streaming (MOD-WIFI-ESP8266) with openstream.          |
 | - Verify 3 Operating Modes: Pure Network, Pure Local, and Hybrid operation.   |
 | - Verify clock stability during heavy multi-sector transfers.                 |
 +-------------------------------------------------------------------------------+
@@ -957,9 +957,9 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | :--- | :--- | :--- | :--- |
 | **TC-01** | Server Silence Verification | Connect to port 65504 on loopback; monitor for 10 seconds. | Zero bytes received prior to first client command `0xE2 0x00`. |
 | **TC-02a** | Direct Serial Handover | Connect MOD-USB-RS232; boot via `FNBOOT` or `OSboot`. | Boots cleanly to TRSDOS Ready; UART1 functions in polled mode. |
-| **TC-02b** | Wi-Fi Handover | Connect MOD-WIFI-ESP8266; run `openstream` $\to$ `FNBOOT`. | Stream preserved; TRSDOS boots to prompt without freezing. |
+| **TC-02b** | Wi-Fi Handover | Connect MOD-WIFI-ESP8266; run `openstream` -> `FNBOOT`. | Stream preserved; TRSDOS boots to prompt without freezing. |
 | **TC-02c** | Pure Network Boot of Drive `:0`| Boot `TRSDOS.bin` with no local disk; mount `:0` on Net Slot 0. | Reads Sector 0, GAT, and `SYS0`..`SYS6` from FujiNet; prompt appears. |
-| **TC-03** | Checksum Vectors | Compute checksum across known 256B test vectors. | Matches big-endian unsigned summation $\sum b_i \pmod{65536}$ exactly. |
+| **TC-03** | Checksum Vectors | Compute checksum across known 256B test vectors. | Matches big-endian unsigned summation sum(b_i) % 65536 exactly. |
 | **TC-04** | `OP_READEX` Verification | Read known sector from Drive `:0` via `0xD2` opcode. | 256 bytes read, client checksum sent, status byte `0x00` returned. |
 | **TC-05** | Write Rejection (Stage 1) | Attempt write to network drive (`SAVE "TEST:0"`). | Immediate `R_PROTECTED` (error 15); host image remains unmodified. |
 | **TC-06** | Container Offset Verification | Read Sector 0 from raw JV1 vs DiskDISK image. | Correctly adds +0 for JV1 (LSN 0) and +1 for DiskDISK (LSN 1); returns valid GAT. |
@@ -969,10 +969,10 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-10** | Path Quoting Case Preservation | Run `FNSETDEV 0 0 1 "/disks/trs80/game.dsk"`. | Server mounts exact path without uppercase conversion (`/disks/...`, not `/DISKS/...`). |
 | **TC-11** | Live DCT Geometry Synchronization | Run `FNMNTIMG 1 1` on unmounted Drive `:1`. | Sector 0 read; DCT geometry populated; byte 0 changed to `0xC3`; `DIR :1` succeeds. |
 | **TC-12** | Directory & File Execution | Run `DIR :0` and load executable (`RUN "TEST/CMD:0"`). | Directory displays files; executable loads and runs cleanly. |
-| **TC-13** | Timer 1 Clock Stability | Perform multi-sector file load ($\ge 64$ sectors). | System time-of-day clock does not drift by $>1$ tick during transfer. |
+| **TC-13** | Timer 1 Clock Stability | Perform multi-sector file load (>= 64 sectors). | System time-of-day clock does not drift by > 1 tick during transfer. |
 | **TC-14** | Stage 2 7-Drive Multi-Mount | Mount unique disks to slots 0–6; access Drives `:1`..`:7`. | All 7 drives respond independently without data crosstalk or buffer pollution. |
 | **TC-15** | Stage 2 Writable Storage | Write 10 sectors via `SAVE`; verify on server. | Host image SHA-256 matches written data; no trailing image corruption. |
-| **TC-16** | RTC Normalization (`OP_TIME`) | Run system clock init via `driver-TOD.S`. | Year $126$ normalized to $26$; `DATE$` renders valid `MM/DD/26` date string. |
+| **TC-16** | RTC Normalization (`OP_TIME`) | Run system clock init via `driver-TOD.S`. | Year 126 normalized to 26; `DATE$` renders valid `MM/DD/26` date string. |
 | **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. |
 | **TC-18** | MOS File Tools Verification | In MOS, run `*TRSDIR`, `*TRSEXT`, `*TRSADD` on test image. | Files extracted and added match binary SHA-256 hashes. |
 | **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. |

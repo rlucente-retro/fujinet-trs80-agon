@@ -16,25 +16,25 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
   * **100% Persistent System Storage:** System configuration changes, `AUTO` startup scripts, and newly saved files persist directly to the mounted disk image on the FujiNet host.
 * **Updateable Local Agon SD Card Disk Support:**
   * **Direct SPI0 Hardware Driver (`driver-SDDVR.S`):** Mounts `.dsk` disk images residing on the Agon Light 2's on-board microSD card (FAT32 filesystem) directly to TRSDOS drives via hardware SPI0 block I/O.
-  * **Updateable Read/Write Media:** Real-time, in-place sector read/write commitments ($1 \text{ SD block} = 2 \text{ TRSDOS sectors}$) without requiring external dongles or networking.
+  * **Updateable Read/Write Media:** Real-time, in-place sector read/write commitments (1 SD block = 2 TRSDOS sectors) without requiring external dongles or networking.
 * **Three Flexible Operating Modes:**
   1. **Mode 1: Pure Network Boot (Diskless Cloud Client):** Drives `:0` through `:7` are hosted remotely on FujiNet / TNFS. The Agon's local microSD card acts strictly as a "Boot ROM" holding MOS and the 64 KB `TRSDOS.bin` kernel.
   2. **Mode 2: Pure Local Boot (Standalone / Offline Workstation):** Drives `:0` through `:3` are mounted from local `.dsk` files on the Agon microSD card via SPI0. Runs 100% self-contained with no network or dongles required.
   3. **Mode 3: Hybrid Operation (Cross-Tier Interoperability):** Mix local and network drives (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image). Standard TRSDOS commands operate transparently across tiers (e.g. `COPY FILE:0 TO :1` downloads a cloud file directly to the local SD card; `BACKUP :0 TO :1` clones a remote network disk to local flash).
 * **Pre-Boot & In-DOS Tool Suites:**
   * **Pre-Boot Visual Manager (`FNBOOT` in Quark MOS):** Interactive MOS visual launcher to query FujiNet status, browse remote TNFS directories and local SD images, assign drives `:0`–`:7`, and launch TRS-OS.
-  * **MOS FAT32 $\longleftrightarrow$ TRSDOS Interchange Tools:** Native MOS utilities (`*TRSDIR`, `*TRSEXT`, `*TRSADD`, `*TRSDEL`, `*TRSNEW`) to inspect, extract, inject, and create TRSDOS disk images directly on the Agon FAT32 filesystem without needing a PC.
-  * **Native TRSDOS In-DOS Utilities:** Full suite of $\le 8$-character LS-DOS commands (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`) for inspecting and hot-swapping drives from the `TRSDOS Ready` prompt.
+  * **MOS FAT32 <-> TRSDOS Interchange Tools:** Native MOS utilities (`*TRSDIR`, `*TRSEXT`, `*TRSADD`, `*TRSDEL`, `*TRSNEW`) to inspect, extract, inject, and create TRSDOS disk images directly on the Agon FAT32 filesystem without needing a PC.
+  * **Native TRSDOS In-DOS Utilities:** Full suite of <= 8-character LS-DOS commands (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`) for inspecting and hot-swapping drives from the `TRSDOS Ready` prompt.
 * **Universal Disk Image Support:**
-  * **JV1:** Flat 256-byte sector layout ($LSN \times 256$), with geometry derived dynamically (Directory Cylinder 17 / GAT).
+  * **JV1:** Flat 256-byte sector layout (LSN * 256), with geometry derived dynamically (Directory Cylinder 17 / GAT).
   * **DiskDISK:** 256-byte header containing authentic DCT metadata; the driver accounts for the 1-sector (+256B) header offset via dynamic format detection (`dw_offset`).
-  * **HDV Hard Disks:** High-capacity images. Volumes $\le 4\text{ MiB}$ supported through the floppy driver; larger volumes supported via dedicated hard disk partitions.
+  * **HDV Hard Disks:** High-capacity images. Volumes <= 4 MiB supported through the floppy driver; larger volumes supported via dedicated hard disk partitions.
 * **Staged Integrity & Safety-First Deployment:**
   * **Stage 1 (Stock Firmware Baseline):** Drives `:1`–`:4` (and network `:0`) operate in verified Read-Only mode (`WP`) to protect host media while upstream firmware write routines are audited.
   * **Stage 2 (Patched Firmware Expansion):** Recompiled firmware with `MAX_DWDISK_DEVICES = 8` unlocks all seven network drives (`:1` through `:7`), with validated write support enabled.
 * **Dual Physical Transports:**
   * **Direct Serial Link (Olimex MOD-USB-RS232):** Inherent, always-on point-to-point hardware connection on UEXT (`PC0`/`PC1`); bypasses `openstream` and boots directly from MOS.
-  * **Wi-Fi TCP/IP Streaming (Olimex MOD-WIFI-ESP8266):** Uses `openstream` $\to$ `OSboot.bin` $\to$ `TRSDOS.bin` to place the Wi-Fi module in transparent passthrough mode (`CIPMODE=1`).
+  * **Wi-Fi TCP/IP Streaming (Olimex MOD-WIFI-ESP8266):** Uses `openstream` -> `OSboot.bin` -> `TRSDOS.bin` to place the Wi-Fi module in transparent passthrough mode (`CIPMODE=1`).
 
 ---
 
@@ -52,7 +52,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |                             AGON LIGHT 2 (CLIENT)                             |
 |                                                                               |
 |  +-------------------------------------------------------------------------+  |
-|  |       TRS-OS Operating System (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)       |  |
+|  |      TRS-80 Model 4 Environment (TRSDOS 6.3.1 / LS-DOS 6.3 on eZ80)     |  |
 |  |                                                                         |  |
 |  |  +-------------------------------------------------------------------+  |  |
 |  |  |         Storage Driver Router (driver-FDCDVR.S)                   |  |  |
@@ -78,7 +78,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |  |                                      |                                  |  |
 |  |                                      v                                  |  |
 |  |  +-------------------------------------------------------------------+  |  |
-|  |  | driver-UART1.S: Explicit 115200 8-N-1 Polled I/O (IER=0, FCTL=07h)|  |  |
+|  |  |    driver-UART1.S: Explicit 115200 8-N-1 I/O (IER=0, FCTL=07h)    |  |  |
 |  |  +-----------------------------------+-------------------------------+  |  |
 |  +--------------------------------------|----------------------------------+  |
 |              | eZ80 SPI0                | UART1 (PC0/PC1 on UEXT Connector)   |
@@ -87,8 +87,8 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 |     | Agon MicroSD     |   |                         |                        |
 |     | (Local FAT32     |   v Option A: Direct Serial v Option B: Wi-Fi        |
 |     |  .DSK Files)     |   +-----------------------+ +----------------------+ |
-|     |                  |   | Olimex MOD-USB-RS232  | | Olimex MOD-WIFI-ESP8266|
-|     | * Local boot/data|   | * Always-on link      | | * Pre-boot:openstream| |
+|     |                  |   | Olimex MOD-USB-RS232  | | Olimex MOD-WIFI-ESP  | |
+|     | * Local boot/data|   | * Always-on link      | | * MOS: openstream    | |
 |     | * Updateable RW  |   | * Direct MOS: FNBOOT  | | * CIPMODE=1 stream   | |
 |     +------------------+   +-----------+-----------+ +----------+-----------+ |
 +----------------------------------------|------------------------|-------------+
@@ -158,7 +158,7 @@ The system supports two physical transports:
 * **`*TRSNEW <image.dsk> [cyls] [sides] [density]`:** Formats a fresh, authentic LS-DOS 6.3 disk image file directly on the Agon FAT32 card.
 
 ### Native TRSDOS Runtime Command Utilities
-Conforming to the LS-DOS 6.x constraint of **$\le 8$-character basenames**:
+Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
 
 | Utility | Syntax | Purpose |
 | :--- | :--- | :--- |
