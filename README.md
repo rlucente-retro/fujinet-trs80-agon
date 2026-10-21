@@ -23,19 +23,19 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
   * **Authentic `@BANK` Supervisor Call (`SVC 102`):** Implements historical 32 KB window switching (`0x8000`–`0xFFFF`) in the HAL, enabling full backward compatibility for expanded memory applications like *LeScript*.
 * **Three Flexible Operating Modes:**
   1. **Mode 1: Pure Network Boot (Diskless Cloud Client):** Drives `:0` through `:7` are hosted remotely on FujiNet / TNFS. The Agon's local microSD card acts strictly as a "Boot ROM" holding MOS and the 64 KB `TRSDOS.bin` kernel.
-  2. **Mode 2: Pure Local Boot (Standalone / Offline Workstation):** Drives `:0` through `:3` are mounted from local `.dsk` files on the Agon microSD card via SPI0. Runs 100% self-contained with no network or dongles required.
-  3. **Mode 3: Hybrid Operation (Cross-Tier Interoperability):** Mix local and network drives (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image). Standard TRSDOS commands operate transparently across tiers (e.g. `COPY FILE:0 TO :1` downloads a cloud file directly to the local SD card; `BACKUP :0 TO :1` clones a remote network disk to local flash).
+  2. **Mode 2: Pure Local Boot (Standalone / Offline Workstation):** Drives `:0` through `:3` (or up to `:7`) are mounted from local `.dsk` files on the Agon microSD card via SPI0. Runs 100% self-contained with no network or dongles required.
+  3. **Mode 3: Hybrid Operation (Cross-Tier Interoperability):** Mix local SD, remote network, and high SRAM drives (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image, Drive `:4` mapped to high SRAM `MEMDISK`). Standard TRSDOS commands operate transparently across tiers (e.g. `COPY FILE:0 TO :1` downloads a cloud file directly to the local SD card; `BACKUP :0 TO :1` clones a remote network disk to local flash).
 * **Pre-Boot & In-DOS Tool Suites:**
   * **Pre-Boot Visual Manager (`FNBOOT` in Quark MOS):** Interactive MOS visual launcher to query FujiNet status, browse remote TNFS directories and local SD images, assign drives `:0`–`:7`, and launch TRSDOS / LS-DOS 6.3.1.
   * **MOS FAT32 <-> TRSDOS Interchange Tools:** Native MOS utilities (`*TRSDIR`, `*TRSEXT`, `*TRSADD`, `*TRSDEL`, `*TRSNEW`) to inspect, extract, inject, and create TRSDOS disk images directly on the Agon FAT32 filesystem without needing a PC.
-  * **Native TRSDOS In-DOS Utilities:** Full suite of <= 8-character LS-DOS commands (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`) for inspecting and hot-swapping drives from the `TRSDOS Ready` prompt.
+  * **Native TRSDOS In-DOS Utilities:** Full suite of <= 8-character LS-DOS commands (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`, `MEMDISK`) for inspecting and hot-swapping drives from the `TRSDOS Ready` prompt.
 * **Universal Disk Image Support:**
   * **JV1:** Flat 256-byte sector layout (LSN * 256), with geometry derived dynamically (Directory Cylinder 17 / GAT).
   * **DiskDISK:** 256-byte header containing authentic DCT metadata; the driver accounts for the 1-sector (+256B) header offset via dynamic format detection (`dw_offset`).
   * **HDV Hard Disks:** High-capacity images. Volumes <= 4 MiB supported through the floppy driver; larger volumes supported via dedicated hard disk partitions.
 * **Staged Integrity & Safety-First Deployment:**
-  * **Stage 1 (Stock Firmware Baseline):** Drives `:1`–`:4` (and network `:0`) operate in verified Read-Only mode (`WP`) to protect host media while upstream firmware write routines are audited.
-  * **Stage 2 (Patched Firmware Expansion):** Recompiled firmware with `MAX_DWDISK_DEVICES = 8` unlocks all seven network drives (`:1` through `:7`), with validated write support enabled.
+  * **Stage 1 (Stock Firmware Baseline):** Up to 4 virtual network disk slots (FujiNet Device Slots 0–3, mapped to Drives `:0`–`:3` in network mode, or secondary drives in hybrid mode) operate in verified Read-Only mode (`WP`) on stock firmware (`MAX_DWDISK_DEVICES = 4`) to protect host media while upstream firmware write routines are audited.
+  * **Stage 2 (Patched Firmware Expansion):** Recompiled firmware with `MAX_DWDISK_DEVICES = 8` unlocks all 8 device slots (Slots 0–7, supporting all 8 TRSDOS drives `:0` through `:7`), with validated write support enabled.
 * **Dual Physical Transports:**
   * **Direct Serial Link (Olimex MOD-USB-RS232):** Inherent, always-on point-to-point hardware connection on UEXT (`PC0`/`PC1`); bypasses `openstream` and boots directly from MOS.
   * **Wi-Fi TCP/IP Streaming (Olimex MOD-WIFI-ESP8266):** Uses `openstream` -> `OSboot.bin` -> `TRSDOS.bin` to place the Wi-Fi module in transparent passthrough mode (`CIPMODE=1`).
