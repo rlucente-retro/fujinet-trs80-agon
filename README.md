@@ -22,7 +22,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
   2. **Mode 2: Pure Local Boot (Standalone / Offline Workstation):** Drives `:0` through `:3` are mounted from local `.dsk` files on the Agon microSD card via SPI0. Runs 100% self-contained with no network or dongles required.
   3. **Mode 3: Hybrid Operation (Cross-Tier Interoperability):** Mix local and network drives (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image). Standard TRSDOS commands operate transparently across tiers (e.g. `COPY FILE:0 TO :1` downloads a cloud file directly to the local SD card; `BACKUP :0 TO :1` clones a remote network disk to local flash).
 * **Pre-Boot & In-DOS Tool Suites:**
-  * **Pre-Boot Visual Manager (`FNBOOT` in Quark MOS):** Interactive MOS visual launcher to query FujiNet status, browse remote TNFS directories and local SD images, assign drives `:0`–`:7`, and launch TRS-OS.
+  * **Pre-Boot Visual Manager (`FNBOOT` in Quark MOS):** Interactive MOS visual launcher to query FujiNet status, browse remote TNFS directories and local SD images, assign drives `:0`–`:7`, and launch TRSDOS / LS-DOS 6.3.1.
   * **MOS FAT32 <-> TRSDOS Interchange Tools:** Native MOS utilities (`*TRSDIR`, `*TRSEXT`, `*TRSADD`, `*TRSDEL`, `*TRSNEW`) to inspect, extract, inject, and create TRSDOS disk images directly on the Agon FAT32 filesystem without needing a PC.
   * **Native TRSDOS In-DOS Utilities:** Full suite of <= 8-character LS-DOS commands (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`) for inspecting and hot-swapping drives from the `TRSDOS Ready` prompt.
 * **Universal Disk Image Support:**
@@ -139,9 +139,9 @@ The system supports two physical transports:
 
 ### Option B: Wi-Fi TCP/IP Streaming (e.g., Olimex MOD-WIFI-ESP8266)
 1. **Pre-Boot Handshake (`openstream`):**
-   * Before booting TRS-OS, Quark MOS runs `openstream <fujinet_host> 65504` to connect the ESP8266 to FujiNet's BoIP server (`port 65504`) and enter transparent UART passthrough mode (`CIPMODE=1`).
+   * Before booting TRSDOS, Quark MOS runs `openstream <fujinet_host> 65504` to connect the ESP8266 to FujiNet's BoIP server (`port 65504`) and enter transparent UART passthrough mode (`CIPMODE=1`).
    * `fujinet-firmware` accepts the connection and remains **completely silent**, transmitting zero bytes until the client sends its first command.
-2. **Boot TRS-OS (`FNBOOT` / `OSboot`):**
+2. **Boot TRSDOS (`FNBOOT` / `OSboot`):**
    * Transmits execution to `TRSDOS.bin`, preserving the active transparent stream on UART1.
 3. **Session Teardown (`closestream`):**
    * If exiting back to MOS, `closestream` sends `+++` with guard times (>20 ms) and `AT+CIPCLOSE` to restore AT command mode.
@@ -179,8 +179,8 @@ Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
 ## Related Repositories & Reference Codebases
 
 * **`agon-net-utils`** ([rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils)): Agon Quark MOS network utilities (`openstream`, `sendstream`, `closestream`).
-* **`trs-net-tcp`** ([rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp)): Previous Python-based TCP/serial disk daemon for TRS-OS.
-* **`trs-os-zds`** ([rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds)): TRS-OS build automation and Agon Light 2 patchset.
+* **`trs-net-tcp`** ([rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp)): Previous Python-based TCP/serial disk daemon for the initial Agon TRSDOS port.
+* **`trs-os-zds`** ([rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds)): TRSDOS 6.3.1 eZ80 kernel build automation and Agon Light 2 patchset.
 * **`fujinet-firmware`** ([FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware)): Core multi-platform FujiNet firmware (`BUILD_COCO` DriveWire target).
 * **`nitros9`** ([nitros-9/nitros9](https://github.com/nitros-9/nitros9)): Reference 6809 assembly FujiNet utilities for NitrOS-9 ([`level1/cmds/fn*.as`](https://github.com/nitros-9/nitros9/tree/main/level1/cmds)).
 * **`OSboot`** ([sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot)): MOS bootstrap loader for launching `TRSDOS.bin`.

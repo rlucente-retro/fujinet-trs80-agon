@@ -28,11 +28,11 @@
 
 1. [Executive Summary & Objectives](#1-executive-summary--objectives)
 2. [Codebase Analysis & Architectural Overview](#2-codebase-analysis--architectural-overview)
-   - [2.1 Architectural Hierarchy: FNBOOT/OSboot, TRS-OS HAL, and TRSDOS/LS-DOS 6.3.1](#21-architectural-hierarchy-fnbootosboot-trs-os-hal-and-trsdosls-dos-631)
+   - [2.1 Architectural Hierarchy: FNBOOT/OSboot, Agon eZ80 HAL, and TRSDOS/LS-DOS 6.3.1](#21-architectural-hierarchy-fnbootosboot-agon-ez80-hal-and-trsdosls-dos-631)
    - [2.2 Driver & Subsystem Disposition Matrix](#22-driver--subsystem-disposition-matrix)
    - [2.3 `agon-net-utils`: MOS Network Bootstrap (Wi-Fi Only)](#23-agon-net-utils-mos-network-bootstrap-wi-fi-only)
    - [2.4 `trs-net-tcp`: Existing Host Daemon & Protocol](#24-trs-net-tcp-existing-host-daemon--protocol)
-   - [2.5 `trs-os-zds`: Agon Light 2 Operating System Core](#25-trs-os-zds-agon-light-2-operating-system-core)
+   - [2.5 `trs-os-zds`: Agon Light 2 Kernel Build Tree](#25-trs-os-zds-agon-light-2-kernel-build-tree)
    - [2.6 `fujinet-firmware`: Multi-Protocol Peripheral Server](#26-fujinet-firmware-multi-protocol-peripheral-server)
    - [2.7 `nitros9`: Reference FujiNet Client Implementations](#27-nitros9-reference-fujinet-client-implementations)
    - [2.8 How TRS-80 Operating Systems Run on the eZ80 Agon Light](#28-how-trs-80-operating-systems-run-on-the-ez80-agon-light)
@@ -50,7 +50,7 @@
    - [5.2 16-Bit Big-Endian Checksum Specification & Test Vectors](#52-16-bit-big-endian-checksum-specification--test-vectors)
    - [5.3 Audit of Upstream Server Write Defects & Safety Mitigation](#53-audit-of-upstream-server-write-defects--safety-mitigation)
    - [5.4 FujiNet Configuration Transaction Protocol (`OP_FUJI`)](#54-fujinet-configuration-transaction-protocol-op_fuji)
-6. [TRS-OS Drive Architecture & Storage Management](#6-trs-os-drive-architecture--storage-management)
+6. [TRSDOS Storage Architecture & Drive Management](#6-trsdos-storage-architecture--drive-management)
    - [6.1 Multi-Tier Storage Allocation Policy & The Three Operating Modes](#61-multi-tier-storage-allocation-policy--the-three-operating-modes)
    - [6.2 Device Control Table (DCT) Management & Dynamic Vector Enablement](#62-device-control-table-dct-management--dynamic-vector-enablement)
    - [6.3 Storage Driver Routing: DriveWire (`driver-DWDVR.S`) & Local SD (`driver-SDDVR.S`)](#63-storage-driver-routing-drivewire-driver-dwdvrs--local-sd-driver-sddvrs)
@@ -77,7 +77,7 @@
 
 ## 1. Executive Summary & Objectives
 
-The primary objective of this project is to evolve the network mass storage and peripheral infrastructure of **TRS-OS** (Daniel Paul Martin's port of TRSDOS 6.3.1 / LS-DOS 6.3 for the Zilog eZ80 on the Olimex Agon Light 2) by replacing the legacy, bespoke `trs-net-tcp` server protocol with standard **FujiNet** protocols provided by **`fujinet-firmware`**.
+The primary objective of this project is to provide a complete network mass storage and peripheral ecosystem for **TRSDOS 6.3.1 / LS-DOS 6.3** running on the Olimex Agon Light 2 (Zilog eZ80). Originating from Daniel Paul Martin's initial eZ80 port, this effort eliminates the legacy embedded RAM-disk and bespoke `trs-net-tcp` protocol, replacing them with standard **FujiNet** protocols provided by **`fujinet-firmware`** alongside direct hardware SPI0 local SD card storage.
 
 ### Core Goals:
 1. **Adopt Industry-Standard Protocols with Validated Wire Handshakes:** Replace the legacy ASCII text protocol (`<00012\n`, `@ping\n`, `@bind\n`) with the high-performance binary **DriveWire 3/4** protocol (`OP_READEX = 0xD2`, `OP_WRITE = 0x57`) and the **`OP_FUJI` (0xE2)** transaction protocol.
@@ -102,7 +102,7 @@ The primary objective of this project is to evolve the network mass storage and 
 
 ## 2. Codebase Analysis & Architectural Overview
 
-### 2.1 Architectural Hierarchy: FNBOOT/OSboot, TRS-OS HAL, and TRSDOS/LS-DOS 6.3.1
+### 2.1 Architectural Hierarchy: FNBOOT/OSboot, Agon eZ80 HAL, and TRSDOS/LS-DOS 6.3.1
 
 The execution environment is structured into three cooperating software layers:
 
@@ -116,7 +116,7 @@ The execution environment is structured into three cooperating software layers:
                                         |
                                         v Jumps to 0x000000 (__init)
 +-------------------------------------------------------------------------------+
-| 2. TRS-OS (Daniel Paul Martin / FujiNet Port)                                 |
+| 2. Agon eZ80 HAL & BIOS (Kernel & Hardware Drivers)                           |
 |    - eZ80 Hardware Abstraction Layer (HAL), BIOS, and Initial Program Loader. |
 |    - Handles CPU registers, timers, UART0 (VDP), UART1 (UEXT), SPI0 (SD).     |
 |    - Emulates Model 4 hardware (video RAM, keyboard, floppy controller).      |
@@ -134,12 +134,12 @@ The execution environment is structured into three cooperating software layers:
 ```
 
 1. **`FNBOOT` / `OSboot`**: Agon Quark MOS bootstrap utilities. `FNBOOT` provides an interactive pre-boot visual browser to inspect FujiNet status, navigate remote TNFS archives, select local Agon SD images, configure drives `:0`–`:7`, program the ESP32 VDP with TRS-80 font/colors, load the lean `TRSDOS.bin` image, and transfer control to the OS. `OSboot` provides a fast direct-boot path.
-2. **`TRS-OS` (`TRSDOS_7`)**: Daniel Paul Martin's port and hardware abstraction layer (HAL) for the Zilog eZ80 processor. It provides the BIOS, CPU initializers, video terminal translation, interrupt tables, 60 Hz timer tasks, and virtual block storage drivers (`driver-FDCDVR.S`) that route sector requests across DriveWire (`driver-DWDVR.S`) and local SD (`driver-SDDVR.S`).
+2. **Agon eZ80 HAL & BIOS**: The hardware abstraction layer (HAL) and BIOS for the Zilog eZ80 processor (originating from the `TRSDOS_7` port). It provides the CPU initializers, video terminal translation, interrupt tables, 60 Hz timer tasks, and virtual block storage drivers (`driver-FDCDVR.S`) that route sector requests across DriveWire (`driver-DWDVR.S`) and local SD (`driver-SDDVR.S`).
 3. **`TRSDOS / LS-DOS 6.3.1`**: The authentic, historical disk operating system originally created by Logical Systems Inc. (LSI) as LS-DOS 6.3 and licensed by Tandy Corporation as TRSDOS 6.3.1 for the TRS-80 Model 4. It contains the system overlays (`SYS0/SYS` through `SYS6/SYS`), supervisor calls (SVCs), file management routines (`SYS4`), and the command line interpreter (`SYS6` `zCMNDI`).
 
 ### 2.2 Driver & Subsystem Disposition Matrix
 
-| Subsystem / Driver | Real Model 4 Hardware | Agon Light 2 Implementation under `TRS-OS` | Integration Strategy with FujiNet |
+| Subsystem / Driver | Real Model 4 Hardware | Agon Light 2 Implementation (eZ80 HAL) | Integration Strategy with FujiNet |
 | :--- | :--- | :--- | :--- |
 | **Video Display (`*DO`)** | Memory-mapped video at `0xF800`–`0xFFFF` (80×24 / 64×16). | Intercepted in `videoRAM.s`; characters converted to terminal stream over UART0 to ESP32 VDP. | **Preserved Untouched.** Reuses existing VDP translation and authentic TRS-80 font support. |
 | **Keyboard Input (`*KI`)** | Memory-mapped matrix scan ports (`0x3801`–`0x3880`). | Intercepted in `SVC09-keyin.s`; reads ASCII keys received from VDP over UART0. | **Preserved Untouched.** Reuses existing keyboard handler. |
@@ -252,7 +252,7 @@ Provided by [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-n
   * Control Commands: `@ping\n` -> `@pong\n`, `@bind\n` -> `@bound\n` + 256B DiskDISK header.
 * **Characteristics:** Pure request-response; completely silent upon connection until client transmits. Bound to a single disk file (`Volumes/sys720k.dsk`) at daemon launch.
 
-### 2.5 `trs-os-zds`: Agon Light 2 Operating System Core
+### 2.5 `trs-os-zds`: Agon Light 2 Kernel Build Tree
 Provided by [rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds), this repository contains the source code for TRSDOS 6.3.1 / LS-DOS 6.3 adapted for the eZ80:
 * **Hardware Adaptation (`patches/0001-uart1-streaming.patch`):**
   * Agon Light 2 uses Port C Mode 7 (`PC0` = TXD1, `PC1` = RXD1) on the eZ80F92.
@@ -325,7 +325,7 @@ All DriveWire opcodes execute through `_port->read()` and `_port->write()`. The 
 
 Empirical validation on host loopback demonstrates:
 1. **Zero Unsolicited Bytes:** When a connection is established, the server configures socket options and logs diagnostics locally, but **transmits zero bytes** over the network or serial socket. Ten seconds of continuous idle observation confirmed 100% silence until the client issued `E2 00` (Ready).
-2. **Shared Response Buffer Caveat:** The FujiNet configuration transaction engine retains unread response data across TCP reconnections. If a previous session terminated mid-transaction, the new connection will receive the stale buffered payload. The TRS-OS client must strictly serialize transactions, consume expected response payloads completely, and enforce a clean session initialization.
+2. **Shared Response Buffer Caveat:** The FujiNet configuration transaction engine retains unread response data across TCP reconnections. If a previous session terminated mid-transaction, the new connection will receive the stale buffered payload. The TRSDOS client must strictly serialize transactions, consume expected response payloads completely, and enforce a clean session initialization.
 
 ### 3.3 Boot Lifecycle, Execution Flow & Explicit UART1 Reinitialization
 
@@ -335,12 +335,12 @@ Empirical validation on host loopback demonstrates:
    * `FNBOOT` queries FujiNet over UART1, presents an interactive VDP visual browser, mounts remote disk images to device slots, maps local SD `.dsk` files, and reads lean `TRSDOS.bin` (~64 KiB: kernel and slice tables `0x000000`–`0x0101FF`) into high external SRAM staging memory.
    * `FNBOOT` executes from eZ80 internal on-chip SRAM (`0xFFE000` / `RAM_ADDR_U`) to reprogram Chip Selects (`CS0`, `CS1`, `RAM_CTL`), remapping external SRAM down to base `0x000000` and displacing Flash ROM.
    * It copies the 64 KB kernel to address `0x000000`, sets terminal font/colors via internal UART0, writes the platform signature `3` into `UART0_SPR`, and jumps to `0x000000` (`__init`).
-2. **`TRS-OS` HAL Startup (`ipl-eZ80_CPU.S`):**
+2. **Agon eZ80 HAL Startup (`ipl-eZ80_CPU.S`):**
    * Enters at `__init` with interrupts disabled (`DI`).
    * Reads `UART0_SPR`. Detecting `3` => branches to `NOINITIAL` (warm boot), preserving MOS memory layouts and VDP terminal settings.
 3. **Preserving the Streaming Connection across the Boundary:**
    * When `openstream` finished in MOS via `mos_uclose()`, MOS zeroed UART1 control registers.
-   * In `finish_init`, `TRS-OS` executes explicit hardware reinitialization:
+   * In `finish_init`, the HAL executes explicit hardware reinitialization:
      - Re-asserts Port C Mode 7 (`PC0` = TXD1, `PC1` = RXD1).
      - Loads BRG divisor 10 (18.432 MHz / (16 * 115,200)).
      - Sets Line Control to 8-N-1 (`UART1_LCTL = 0x03`).
@@ -359,7 +359,7 @@ Empirical validation on host loopback demonstrates:
 
 ```assembly
 ; =============================================================================
-; Explicit eZ80 UART1 Hardware Initialization for TRS-OS (finish_init)
+; Explicit eZ80 UART1 Hardware Initialization (finish_init)
 ; Solidifies the verified patch from patches/0001-uart1-streaming.patch
 ; =============================================================================
 fn_uart_init:
@@ -416,7 +416,7 @@ fn_uart_init:
 FujiNet's unpatched `mediaTypeDSK.cpp` treats disk files as raw flat byte streams (`offset = LSN * 256`).
 * When mounting a **DiskDISK** or **Reed HDV** file that contains a 256-byte container header, raw LSN 0 returns the header, shifting all subsequent payload sectors by one position.
 * **Concrete Client Translation Architecture:**
-  1. The TRS-OS storage driver maintains a per-drive offset table in RAM: `dw_offset` (8 bytes, one per logical drive `:0`..`:7`).
+  1. The storage driver router maintains a per-drive offset table in RAM: `dw_offset` (8 bytes, one per logical drive `:0`..`:7`).
   2. When an image is mounted, the client reads raw LSN 0 via `OP_READEX`.
   3. If the first 8 bytes match ASCII `'DiskDISK'`, it sets `dw_offset[slot] = 1`.
   4. If LSN 0 does not match `'DiskDISK'`, the image is treated as a flat raw JV1 image, setting `dw_offset[slot] = 0`.
@@ -441,7 +441,7 @@ Because DriveWire does not transmit disk geometry metadata during mounting, TRSD
 ### 4.4 HDV Hard Disk Support vs. Floppy Driver Addressing Bounds
 
 While the DriveWire protocol packet format carries **24-bit LSNs** capable of addressing up to 4 GB (2^24 * 256 bytes):
-* **Floppy Driver Geometric Limit:** The standard TRS-OS floppy driver (`driver-FDCDVR.S`) calculates sectors using an 8-bit cylinder register (`D`), sectors per track from DCT (`DCT+7 & 1Fh + 1`), and a 16-bit accumulator `fdc_no_sum`. This caps addressing through the floppy driver at 256 * 64 = 16,384 sectors = **4 MiB**.
+* **Floppy Driver Geometric Limit:** The standard TRSDOS floppy driver (`driver-FDCDVR.S`) calculates sectors using an 8-bit cylinder register (`D`), sectors per track from DCT (`DCT+7 & 1Fh + 1`), and a 16-bit accumulator `fdc_no_sum`. This caps addressing through the floppy driver at 256 * 64 = 16,384 sectors = **4 MiB**.
 * **High-Capacity HDV Architecture:** True 5 MB to 32 MB HDV support requires a dedicated hard disk driver architecture (e.g. `RHDVR` / partition driver) rather than routing wide LSNs through the floppy disk driver. Stage 1 focuses on standard floppy geometries (<= 4 MiB).
 
 ---
@@ -525,11 +525,11 @@ Server -> Client:  [ Response Payload Bytes... ]
 
 ---
 
-## 6. TRS-OS Drive Architecture & Storage Management
+## 6. TRSDOS Storage Architecture & Drive Management
 
 ### 6.1 Multi-Tier Storage Allocation Policy & The Three Operating Modes
 
-TRS-OS replaces the artificial in-memory RAM disk with a flexible multi-tier storage architecture supporting three distinct operating modes:
+The integration replaces the artificial in-memory RAM disk with a flexible multi-tier storage architecture supporting three distinct operating modes:
 
 #### The Three Operating Modes:
 1. **Mode 1: Pure Network Boot (Diskless Cloud Client):**
@@ -549,7 +549,7 @@ TRS-OS replaces the artificial in-memory RAM disk with a flexible multi-tier sto
 
 ### 6.2 Device Control Table (DCT) Management & Dynamic Vector Enablement
 
-Each logical drive in TRS-OS is governed by a 10-byte Device Control Table entry (`DCT0$` through `DCT7$`):
+Each logical drive in TRSDOS / LS-DOS is governed by a 10-byte Device Control Table entry (`DCT0$` through `DCT7$`):
 * `DCT+0`, `DCT+1`, `DCT+2`: Driver jump vector (`JP FDCDVR`, `C3 xx xx`h).
   * `DCT0$` and `DCT1$` are initialized with `JP FDCDVR`.
   * `DCT2$` through `DCT7$` are initialized with `RET` (`0xC9`), followed by `dw FDCDVR`.
@@ -859,7 +859,7 @@ At 115,200 baud (8 data bits, 1 stop bit, no parity = 10 bits per character fram
 * **60 Hz Timer Tick Suppression & Clock Drift:** Timer 1 generates a periodic 60 Hz interrupt (16.67 ms). Because a single 264-byte `OP_READEX` transaction takes >= 22.92 ms, holding interrupts disabled (`DI`) continuously throughout the sector transfer drops timer ticks.
 * **Mitigation Architecture:**
   1. **Surgical Interrupt Bracketing:** Mask interrupts (`DI`) only during burst transfers (5B header, 256B payload, 2B checksum, 1B status). Re-enable interrupts (`EI`) during checksum computation and inter-packet turnarounds.
-  2. **Periodic RTC Resynchronization:** Query FujiNet's `OP_TIME` (`0x23`) during idle periods to resynchronize the TRS-OS system time-of-day clock against network time.
+  2. **Periodic RTC Resynchronization:** Query FujiNet's `OP_TIME` (`0x23`) during idle periods to resynchronize the TRSDOS system time-of-day clock against network time.
   3. **Interrupt Isolation:** `UART1_IER` is held at `0x00` during polled disk I/O to prevent stray UART interrupt handlers from corrupting registers.
 
 ### 9.3 ESP8266 `+++` Control Escape Timing & Binary Transparency
