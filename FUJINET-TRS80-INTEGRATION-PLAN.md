@@ -60,7 +60,7 @@
    - [7.2 Pre-Boot Quark MOS Utility Suite (`FNBOOT` & MOS File Interchange Tools)](#72-pre-boot-quark-mos-utility-suite-fnboot--mos-file-interchange-tools)
    - [7.3 Eight-Character Basename Compliance & Command Summary](#73-eight-character-basename-compliance--command-summary)
    - [7.4 Detailed Specification of the 11 Command Utilities](#74-detailed-specification-of-the-11-command-utilities)
-   - [7.5 LS-DOS System Interface & System SVC Conventions](#75-ls-dos-system-interface--system-svc-conventions)
+   - [7.5 LS-DOS System Interface & SVC Calling Conventions](#75-ls-dos-system-interface--svc-calling-conventions)
 8. [Build Pipeline with ZDS II & Authentic CMD Packaging](#8-build-pipeline-with-zds-ii--authentic-cmd-packaging)
    - [8.1 Toolchain Configuration & AgonDev Parity](#81-toolchain-configuration--agondev-parity)
    - [8.2 Authentic TRSDOS `.CMD` Load Module Generation](#82-authentic-trsdos-cmd-load-module-generation)
@@ -72,6 +72,8 @@
 10. [Phased Implementation Roadmap](#10-phased-implementation-roadmap)
 11. [Verification & Test Matrix](#11-verification--test-matrix)
 12. [Project Reference Matrix & Upstream Sources](#12-project-reference-matrix--upstream-sources)
+   - [12.1 Primary Repositories](#121-primary-repositories)
+   - [12.2 NitrOS-9 FujiNet Reference Source Files](#122-nitros-9-fujinet-reference-source-files)
 
 ---
 
