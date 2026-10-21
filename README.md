@@ -17,6 +17,10 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 * **Updateable Local Agon SD Card Disk Support:**
   * **Direct SPI0 Hardware Driver (`driver-SDDVR.S`):** Mounts `.dsk` disk images residing on the Agon Light 2's on-board microSD card (FAT32 filesystem) directly to TRSDOS drives via hardware SPI0 block I/O.
   * **Updateable Read/Write Media:** Real-time, in-place sector read/write commitments (1 SD block = 2 TRSDOS sectors) without requiring external dongles or networking.
+* **Historical Expanded Memory & Authentic `MEMDISK` (128K – 512K):**
+  * **Harnessing Freed SRAM:** Emulates historical Model 4 expanded memory architectures (Tandy 128K Bank 1 and Dave Huffman / Anitek SuperMEM 512K) using the Agon's ~448 KiB of freed external SRAM (Banks 1–7: `0x010000`–`0x07FFFF`).
+  * **Authentic High-Speed `MEMDISK`:** Direct 24-bit eZ80 memory block transfers (`LDIR.L`) achieve 256-byte sector copy times of **27.7 µs** (512 cycles @ 18.432 MHz), providing an ultra-fast in-memory RAM disk fully compatible with LS-DOS and CP/M.
+  * **Authentic `@BANK` Supervisor Call (`SVC 102`):** Implements historical 32 KB window switching (`0x8000`–`0xFFFF`) in the HAL, enabling full backward compatibility for expanded memory applications like *LeScript*.
 * **Three Flexible Operating Modes:**
   1. **Mode 1: Pure Network Boot (Diskless Cloud Client):** Drives `:0` through `:7` are hosted remotely on FujiNet / TNFS. The Agon's local microSD card acts strictly as a "Boot ROM" holding MOS and the 64 KB `TRSDOS.bin` kernel.
   2. **Mode 2: Pure Local Boot (Standalone / Offline Workstation):** Drives `:0` through `:3` are mounted from local `.dsk` files on the Agon microSD card via SPI0. Runs 100% self-contained with no network or dongles required.

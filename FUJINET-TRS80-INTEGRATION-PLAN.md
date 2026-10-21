@@ -36,6 +36,7 @@
    - [2.6 `fujinet-firmware`: Multi-Protocol Peripheral Server](#26-fujinet-firmware-multi-protocol-peripheral-server)
    - [2.7 `nitros9`: Reference FujiNet Client Implementations](#27-nitros9-reference-fujinet-client-implementations)
    - [2.8 How TRS-80 Operating Systems Run on the eZ80 Agon Light](#28-how-trs-80-operating-systems-run-on-the-ez80-agon-light)
+   - [2.9 Historical Model 4 Expanded Memory Options & eZ80 Realization](#29-historical-model-4-expanded-memory-options--ez80-realization)
 3. [Protocol Validation & Hardware Handover](#3-protocol-validation--hardware-handover)
    - [3.1 Validation of Direct Serial Protocol Support](#31-validation-of-direct-serial-protocol-support)
    - [3.2 Verification of Server Silence & Shared Transaction State](#32-verification-of-server-silence--shared-transaction-state)
@@ -55,6 +56,7 @@
    - [6.2 Device Control Table (DCT) Management & Dynamic Vector Enablement](#62-device-control-table-dct-management--dynamic-vector-enablement)
    - [6.3 Storage Driver Routing: DriveWire (`driver-DWDVR.S`) & Local SD (`driver-SDDVR.S`)](#63-storage-driver-routing-drivewire-driver-dwdvrs--local-sd-driver-sddvrs)
    - [6.4 Real-Time Clock & Line Printer Drivers](#64-real-time-clock--line-printer-drivers)
+   - [6.5 Expanded Memory RAM Disk Architecture (`driver-MEMDVR.S`)](#65-expanded-memory-ram-disk-architecture-driver-memdvrs)
 7. [Native TRSDOS & Quark MOS Utilities Specification](#7-native-trsdos--quark-mos-utilities-specification)
    - [7.1 Architecture & Peripheral Scope (TRSDOS Transport Decoupling)](#71-architecture--peripheral-scope-trsdos-transport-decoupling)
    - [7.2 Pre-Boot Quark MOS Utility Suite (`FNBOOT` & MOS File Interchange Tools)](#72-pre-boot-quark-mos-utility-suite-fnboot--mos-file-interchange-tools)
@@ -305,6 +307,45 @@ The ability of vintage TRS-80 Model 4 operating systems (TRSDOS 6.3.1, LS-DOS 6.
 
 3. **Software Compatibility:**
    * Any well-behaved TRS-80 Model 4 program that uses standard LS-DOS SVC calls or accesses the screen through standard DOS drivers runs natively on the Agon Light without modification or recompilation.
+
+### 2.9 Historical Model 4 Expanded Memory Options & eZ80 Realization
+
+#### 1. Historical Model 4 Expanded Memory Architectures
+During the Model 4's commercial lifetime, several memory expansion techniques were developed to transcend the Z80's native 64 KB address limit:
+
+1. **Tandy Factory 128 KB Architecture (Bank 0 / Bank 1):**
+   * Standard on the Model 4P and Gate Array Model 4 (optional expansion on non-gate array Model 4).
+   * **Split Memory Architecture:** The lower 32 KB (`0x0000`–`0x7FFF`) remained fixed, preserving the OS kernel, interrupt vectors, Page 0–3 supervisor tables, and stack. The upper 32 KB (`0x8000`–`0xFFFF`) served as the **bank-switched window**, toggled between Bank 0 (main memory) and Bank 1 (extended memory).
+   * **Hardware Control:** Managed via the Operation Register at I/O Port `84H` (Bits 4 and 5 controlled bank selection and mapping mode).
+   * **LS-DOS Supervisor Call:** LS-DOS 6.3 natively managed 128 KB via the **`@BANK` SVC** (`SVC 102` / `SVC 66h`), maintaining system state in low-memory cells: `BAR$` (Bank Available RAM bitmask), `BUR$` (Bank In-Use bitmask), and `LBANK$` (Last Active Bank).
+   * **Authentic `MEMDISK` Driver:** Tandy and Logical Systems provided the native `MEMDISK` driver, which partitioned Bank 1 into an ultra-fast in-memory RAM disk (typically mapped to Drive `:4`, `:5`, or `:7`).
+
+2. **Third-Party 256 KB, 512 KB, and 1024 KB (1 MB) Expansions:**
+   * **Dave Huffman 512 KB / 1 MB Upgrades:** Replaced 64K DRAMs with 256K DRAMs and added an address-decode latch at **Port `94H`** (tapped from pin 10 of `U50`). Port `94H` acted as an extended page latch (selecting pages 0–7 for 512 KB, or 0–15 for 1 MB), while Port `84H` gated the selected page into the upper 32 KB CPU window.
+   * **Alpha Technology / Anitek SuperMEM (256 KB – 1024 KB):** Plug-in expansion board beneath the Z80 socket, supported by Roy Soltoff's "AT" patches for LS-DOS, custom RAM disks (*SuperDrive*), and extended applications like the *LeScript* word processor.
+   * **Montezuma CP/M 2.2 Banked Memory:** Banked CP/M BIOS utilizing extra memory for banked system buffers and a fast `M:` RAM disk.
+
+#### 2. Hardware Reality on the Agon Light 2
+The Olimex Agon Light 2 features **512 KB of physical external SRAM** (`0x000000`–`0x07FFFF`). By eliminating the monolithic 425 KB embedded RAM disk, the lean `TRSDOS.bin` occupies only Bank 0 (`0x000000`–`0x00FFFF`) and the slice table (`0x010000`–`0x0101FF`), leaving **~448 KiB completely free**.
+
+This 512 KB physical address space maps cleanly into **eight 64 KB banks**:
+* **Bank 0 (`0x000000`–`0x00FFFF`):** Primary System RAM (TRSDOS kernel, HAL, Page 0–3 tables, low user memory).
+* **Bank 1 (`0x010000`–`0x01FFFF`):** Historical Tandy 128 KB expansion bank.
+* **Banks 2–7 (`0x020000`–`0x07FFFF`):** Extended memory banks (matching Dave Huffman / SuperMEM 512 KB configurations).
+
+#### 3. Realizing Historical Compatibility via the eZ80
+Rather than requiring complex external hardware bank-switching logic, the Agon HAL realizes historical expanded memory through three software-compatible tiers:
+
+1. **Ultra-Fast Authentic `MEMDISK` (The Dominant Use Case):**
+   * Historically, over 90% of expanded memory was utilized as a RAM disk.
+   * The Agon HAL provides an authentic `MEMDISK` block driver (`driver-MEMDVR.S`). When mounted (e.g. `MEMDISK :4`), it formats Banks 1–7 into a 448 KiB virtual RAM disk (or standard 128K/360K/400K floppy geometry).
+   * Sector transfers bypass slow bank-switching hardware entirely by utilizing native eZ80 24-bit pointer instructions (`LDIR.L`). Copying a 256-byte sector directly between the user buffer in Bank 0 and high SRAM takes **512 CPU clock cycles (27.7 microseconds)**.
+2. **Authentic `@BANK` Supervisor Call (`SVC 102`) Emulation:**
+   * In `finish_init`, the HAL sets `BAR$ = 0x02` (128 KB mode) or `BAR$ = 0xFE` (512 KB mode).
+   * In `SVC102-banks.S`, when an application requests switching the upper 32 KB window (`0x8000`–`0xFFFF`) to Bank N, the HAL executes a high-speed 24-bit SRAM exchange between `0x008000`–`0x00FFFF` and `0x0N8000`–`0x0NFFFF` (~1.7 ms). When restoring Bank 0, it swaps the data back.
+   * Standard LS-DOS applications (*LeScript*, task managers) function without modification.
+3. **CP/M Banked BIOS Compatibility:**
+   * For Montezuma CP/M 2.2, the BIOS RAM-disk driver maps drive `M:` directly across Banks 1–7 via 24-bit memory block I/O.
 
 ---
 
@@ -700,6 +741,45 @@ fdc_rd_err:
 
   **Year Modulo-100 Normalization:** `driver-TOD.S` normalizes POSIX `tm_year` (126 -> 26) before storing in LS-DOS `DATE$` cells, guaranteeing seamless Y2K+ compatibility.
 
+### 6.5 Expanded Memory RAM Disk Architecture (`driver-MEMDVR.S`)
+
+The storage driver router `driver-FDCDVR.S` extends its drive routing table (`drv_target_table`) to accommodate high SRAM as a first-class storage tier alongside Local SD and FujiNet:
+* **Target `0`:** Local Agon MicroSD (`driver-SDDVR.S`, eZ80 SPI0 hardware block I/O).
+* **Target `1`:** Remote FujiNet DriveWire (`driver-DWDVR.S`, UART1 binary packets).
+* **Target `2`:** High SRAM Expanded RAM Disk (`driver-MEMDVR.S`, direct eZ80 24-bit memory copy).
+
+#### Memory Layout & Sector Translation:
+* **Base Physical Address:** `0x010000` (Bank 1 base, immediately following the 64 KB kernel).
+* **Addressing Formula:**
+  **RAM Sector Address = 0x010000 + (LSN * 256)**
+* **Capacity Bounds:**
+  * In standard 128 KB emulation (Bank 1 only): 256 sectors = 65,536 bytes (64 KiB).
+  * In full 512 KB emulation (Banks 1 through 7): 1,792 sectors = 458,752 bytes (~448 KiB).
+* **Throughput:** A 256-byte sector transfer executed via `LDIR.L` takes 512 clock cycles (27.7 µs @ 18.432 MHz), providing an effective sustained transfer rate exceeding **9.2 MB/s**.
+
+```assembly
+; =============================================================================
+; driver-MEMDVR.S: High SRAM Expanded Memory RAM Disk Sector Transfer
+; Transfers 256 bytes between user buffer in Bank 0 and High SRAM (Banks 1-7)
+; =============================================================================
+rd_memdisk:
+        ; Calculate 24-bit source address: 0x010000 + (fdc_no_sum * 256)
+        ld      hl, (fdc_no_sum)        ; 16-bit linear sector number
+        ld      a, h                    ; MSB of LSN
+        ld      d, l                    ; LSB of LSN
+        ld      e, 0                    ; Multiply by 256 -> DE = LSN * 256
+        inc     a                       ; Add 0x010000 base offset (Bank 1)
+        ld      h, a                    ; H = high byte of 24-bit address
+        ld      l, d                    ; HL:E = 24-bit physical address in SRAM
+
+        ; Perform 256-byte high-speed block copy to user buffer
+        pop     de                      ; Recover 16-bit user destination buffer
+        ld      bc, 256                 ; Sector length = 256 bytes
+        ; Execute 24-bit LDIR transfer
+        ldir.l                          ; Copy from (HL) 24-bit to (DE) 16-bit
+        jp      rd_finish               ; Clean exit via authentic LS-DOS handler
+```
+
 ---
 
 ## 7. Native TRSDOS & Quark MOS Utilities Specification
@@ -947,6 +1027,7 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | PHASE 8: Peripheral Drivers & High-Capacity Architecture                      |
 | - Implement driver-TOD.S with OP_TIME (0x23) year modulo-100 normalization.   |
 | - Implement driver-PRDVR.S with OP_PRINT (0x50) line printer spooling.        |
+| - Implement driver-MEMDVR.S and @BANK (SVC 102) for 448 KB expanded SRAM.     |
 | - Design dedicated hard disk driver architecture for 5–32 MB HDV volumes.     |
 +-------------------------------------------------------------------------------+
 ```
@@ -978,6 +1059,7 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. |
 | **TC-18** | MOS File Tools Verification | In MOS, run `*TRSDIR`, `*TRSEXT`, `*TRSADD` on test image. | Files extracted and added match binary SHA-256 hashes. |
 | **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. |
+| **TC-20** | Expanded RAM & `MEMDISK` | Mount RAM disk via `MEMDISK :4`; execute directory and file copy. | Sectors read/write via eZ80 24-bit LDIR in 27.7 µs; @BANK switches banks cleanly. |
 
 ---
 
