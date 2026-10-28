@@ -33,20 +33,20 @@ At boot time:
 ### 2.2 The Phase 1 Solution
 Phase 1 eliminates the static embedded disk image from the kernel build. `TRSDOS.bin` now terminates at address `0x0101FF` (containing solely the kernel, HAL, drivers, and IPL initialization routines).
 
-```
+```text
 +-------------------------------------------------------------------------------+
 |                     AGON LIGHT 2 MEMORY MAP (512 KB SRAM)                     |
 |                                                                               |
-| 0x000000 +-----------------------------------------------------------------+ |
-|          | TRSDOS 7 Kernel, HAL, Drivers, System Buffers (~64 KB)          | |
-| 0x010000 +-----------------------------------------------------------------+ |
-|          |                                                                 | |
-|          | FREED EXTERNAL SRAM (~448 KB)                                   | |
-|          | - Emulated Model 4 Bank 1 (32 KB: 0x010000-0x017FFF)            | |
-|          | - Anitek SuperMEM Banks 2-7 (192 KB: 0x018000-0x07FFFF)         | |
-|          | - High-Speed Sector Caches & Dynamic RAM Disks                  | |
-|          |                                                                 | |
-| 0x07FFFF +-----------------------------------------------------------------+ |
+| 0x000000 +------------------------------------------------------------------+ |
+|          | TRSDOS 7 Kernel, HAL, Drivers, System Buffers (~64 KB)           | |
+| 0x010000 +------------------------------------------------------------------+ |
+|          |                                                                  | |
+|          | FREED EXTERNAL SRAM (~448 KB)                                    | |
+|          | - Emulated Model 4 Bank 1 (32 KB: 0x010000-0x017FFF)             | |
+|          | - Anitek SuperMEM Banks 2-7 (192 KB: 0x018000-0x07FFFF)          | |
+|          | - High-Speed Sector Caches & Dynamic RAM Disks                   | |
+|          |                                                                  | |
+| 0x07FFFF +------------------------------------------------------------------+ |
 +-------------------------------------------------------------------------------+
 ```
 
@@ -62,17 +62,29 @@ When the eZ80 starts:
 ### 3.1 Packet Frame Structure for `OP_READEX` (`0xD2`)
 The DriveWire 3/4 protocol uses binary command frames. For disk sector reads, Phase 1 implements opcode `0xD2` (`OP_READEX`), which supports 24-bit Logical Sector Numbers (LSN) and 16-bit big-endian checksums.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as "Agon eZ80 (TRSDOS)"
+    participant Server as "FujiNet (DriveWire)"
+    Note over Client,Server: Pure Network Sector Read (OP_READEX)
+    Client->>Server: [0xD2] [Slot] [LSN 23..0] (5-byte Request Header)
+    Server-->>Client: 256 Bytes Raw Sector Data
+    Client->>Server: [Checksum MSB] [Checksum LSB] (2-byte Big-Endian Sum)
+    Server-->>Client: Status Byte (0x00 = Success)
 ```
-CLIENT (Agon eZ80)                           SERVER (FujiNet / DriveWire)
-   |                                                    |
-   | --- [ 0xD2 ] [ Slot ] [ LSN23..0 (3B) ] ---------> |  (5-byte Request Header)
-   |                                                    |
-   | <--- [ 256 Bytes Sector Data ] ------------------- |  (Raw Sector Payload)
-   |                                                    |
-   | --- [ Checksum MSB ] [ Checksum LSB ] -----------> |  (2-byte Client Checksum)
-   |                                                    |
-   | <--- [ Status Byte (0x00 = OK) ] ----------------- |  (1-byte Operation Status)
-   |                                                    |
+
+```text
+CLIENT (Agon eZ80)                                    SERVER (FujiNet / DriveWire)
+       |                                                         |
+       | ----- [ 0xD2 ] [ Slot ] [ LSN23..0 (3B) ] ------------> |  (5-byte Request Header)
+       |                                                         |
+       | <---- [ 256 Bytes Sector Data ] ----------------------- |  (Raw Sector Payload)
+       |                                                         |
+       | ----- [ Checksum MSB ] [ Checksum LSB ] --------------> |  (2-byte Client Checksum)
+       |                                                         |
+       | <---- [ Status Byte (0x00 = OK) ] ---------------------- |  (1-byte Operation Status)
+       |                                                         |
 ```
 
 1. **Request Header (5 bytes):**
@@ -294,7 +306,7 @@ ld      a, l
 ld      (dw_hdr+4), a                   ; LSN [7..0]
 ```
 `calcsec` translates TRSDOS track/cylinder and sector coordinates into an absolute 16-bit Logical Sector Number:
-$$\text{LSN} = (\text{Cylinder} \times \text{Heads} \times \text{Sectors/Track}) + (\text{Head} \times \text{Sectors/Track}) + \text{Sector}$$
+`LSN = (Cylinder * Heads * Sectors/Track) + (Head * Sectors/Track) + Sector`
 The driver adds `dw_offset` so that filesystem LSN 0 correctly references file LSN 1 on DiskDISK images.
 
 #### Step 2: FIFO Flush & Wire Exchange
@@ -390,7 +402,7 @@ Patch 3 resolves several subtle firmware and emulation conflicts between the Ago
 ### 6.2 Root Cause Discovery: Agon VDP Dual Architecture (`VDU` vs. `fabgl::Terminal`)
 By running `fab-agon-emulator --verbose` and inspecting the VDP debug logs, a critical structural reality was uncovered:
 
-```
+```text
 ESP32 DBGSerial: vdu_mode: 4
 ESP32 DBGSerial: changeMode: canvas(640,240), mode 4
 ESP32 DBGSerial: Terminal enabled

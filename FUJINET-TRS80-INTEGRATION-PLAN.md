@@ -110,7 +110,36 @@ The primary objective of this project is to provide a complete network mass stor
 
 The execution environment is structured into three cooperating software layers:
 
+```mermaid
+flowchart TD
+    subgraph L1["1. FNBOOT / OSboot (Agon Quark MOS Environment)"]
+        direction TB
+        A1["Quark MOS visual launcher & pre-boot manager (eZ80 Z80 mode)"]
+        A2["Configures VDP video/font, manages FujiNet slots & local SD images"]
+        A3["Stages 64 KB TRSDOS.bin into SRAM, remaps memory, sets platform tag"]
+    end
+
+    subgraph L2["2. Agon eZ80 HAL & BIOS (Kernel & Hardware Drivers)"]
+        direction TB
+        B1["eZ80 Hardware Abstraction Layer (HAL), BIOS, and Initial Program Loader"]
+        B2["Handles CPU registers, timers, UART0 (VDP), UART1 (UEXT), SPI0 (SD)"]
+        B3["Emulates Model 4 hardware (video RAM, keyboard, floppy controller)"]
+        B4["Routes :0..:7 to DriveWire (driver-DWDVR) or Local SD (driver-SDDVR)"]
+    end
+
+    subgraph L3["3. TRSDOS / LS-DOS 6.3.1 (Logical Systems Inc. / Tandy)"]
+        direction TB
+        C1["Authentic 1980s TRS-80 Model 4 disk operating system"]
+        C2["Runs in Z80 compatibility mode (ADL = 0) with standard 64 KB map"]
+        C3["100% authentic LSI code for SVCs, SYS0..SYS6 overlays, FMS, and CLI"]
+        C4["Unaware of eZ80/Agon hardware; issues standard Model 4 sector I/O"]
+    end
+
+    L1 -->|"Jumps to 0x000000 (__init)"| L2
+    L2 -->|"Hands off to DOSINIT -> zCMNDI"| L3
 ```
+
+```text
 +-------------------------------------------------------------------------------+
 | 1. FNBOOT / OSboot (Agon Quark MOS Environment)                               |
 |    - Quark MOS visual launcher & pre-boot manager (eZ80 Z80 mode).            |
@@ -157,7 +186,7 @@ The execution environment is structured into three cooperating software layers:
 | **Network Disk Driver** | WD1773 FDC or bespoke network controller. | Legacy line-based ASCII protocol (`<XXXXX`, `>XXXXX`) in `driver-FDCDVR.S` for Drive `:6`. | **Replaced.** Overhauled to binary DriveWire `OP_READEX` (`0xD2`) / `OP_WRITE` (`0x57`) for Drives `:0`–`:7` via `driver-DWDVR.S`. |
 | **Line Printer (`*PR`)** | Centronics parallel printer port at I/O port `0xF8`. | Intercepted in `driver-PRDVR.S`. | **Adapted.** Redirects character stream to UART1 `OP_PRINT` (`0x50`) to FujiNet. |
 
-```
+```text
 +-------------------------------------------------------------------------------+
 |                             AGON LIGHT 2 (CLIENT)                             |
 |                                                                               |
@@ -498,7 +527,7 @@ While the DriveWire protocol packet format carries **24-bit LSNs** capable of ad
 #### Sector Read (`OP_READEX = 0xD2`)
 In `BUILD_COCO` of `fujinet-firmware`, the server command dispatcher only routes `OP_READEX` (`0xD2`) to `op_readex()`. Opcode `0x52` is not dispatched.
 
-```
+```text
 Client -> Server:  [ 0xD2 ] [ Slot (1B) ] [ LSN_23..16 ] [ LSN_15..8 ] [ LSN_7..0 ]   (5 bytes)
 Server -> Client:  [ 256-Byte Sector Data ]                                             (256 bytes)
 Client -> Server:  [ Checksum_MSB (1B) ] [ Checksum_LSB (1B) ]                          (2 bytes)
@@ -516,7 +545,7 @@ Server -> Client:  [ Status (1B) ]                                              
 > **Complete Exchange Drainage:** In error conditions (e.g., inactive slot `0xF6` or read error), the server transmits 256 dummy zero bytes and still expects the 2-byte checksum before emitting the status byte. The client **must complete the full 264-byte exchange** even on errors to maintain protocol lockstep.
 
 #### Sector Write (`OP_WRITE = 0x57`)
-```
+```text
 Client -> Server:  [ 0x57 ] [ Slot (1B) ] [ LSN_23..16 ] [ LSN_15..8 ] [ LSN_7..0 ]   (5 bytes)
                    [ 256-Byte Sector Data ]                                             (256 bytes)
                    [ Checksum_MSB (1B) ] [ Checksum_LSB (1B) ]                          (2 bytes)
@@ -550,7 +579,22 @@ Detailed source audit and host probing of `fujinet-firmware` (`BUILD_COCO`) reve
 
 Configuration commands follow a structured three-phase transaction model:
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as "Client (Agon eZ80)"
+    participant Server as "Server (FujiNet)"
+    Note over Client,Server: Phase 1: Execute Command
+    Client->>Server: [0xE2 OP_FUJI] [CMD_BYTE] [Parameters...]
+    Note over Client,Server: Phase 2: Check Status / Error
+    Client->>Server: [0xE2 OP_FUJI] [0x02 FUJI$GetError]
+    Server-->>Client: Status Byte (0x01 = Success, 0x90 = General Error)
+    Note over Client,Server: Phase 3: Fetch Response Data (if applicable)
+    Client->>Server: [0xE2 OP_FUJI] [0x01 FUJI$GetResponse]
+    Server-->>Client: Response Payload Bytes...
 ```
+
+```text
 Phase 1: Execute Command
 Client -> Server:  [ 0xE2 (OP_FUJI) ] [ CMD_BYTE ] [ Parameters... ]
 
@@ -609,7 +653,23 @@ Each logical drive in TRSDOS / LS-DOS is governed by a 10-byte Device Control Ta
 
 The storage driver `driver-FDCDVR.S` functions as an I/O router, dispatching sector requests across three underlying storage tiers based on the drive target table:
 
+```mermaid
+flowchart TD
+    FS["TRSDOS / LS-DOS File System (SYS4)"]
+    Router["I/O Router (driver-FDCDVR.S)"]
+    
+    FS --> Router
+    
+    Router -->|"Local SD Target (Drives :0, :1)"| SD["driver-SDDVR.S (eZ80 SPI0 I/O)"]
+    Router -->|"DriveWire Target (Drives :2-6)"| DW["driver-DWDVR.S (UART1 Bus)"]
+    Router -->|"High SRAM Target (Drive :7)"| MEM["driver-MEMDVR.S (512 KB SRAM)"]
+    
+    SD --> Card["Agon MicroSD (Local FAT32)"]
+    DW --> Net["FujiNet Hardware / Network"]
+    MEM --> Ram["SRAM Banks 1-7"]
 ```
+
+```text
                       +----------------------------------+
                       |         TRSDOS / LS-DOS          |
                       |        File System (SYS4)        |
@@ -617,7 +677,7 @@ The storage driver `driver-FDCDVR.S` functions as an I/O router, dispatching sec
                                         |
                       +-----------------v----------------+
                       |       I/O Router (FDCDVR)        |
-                      +---+--------------+--------------++
+                      +---+--------------+--------------+
                           |              |              |
         Local SD Target   |   DriveWire  |  High SRAM   |
    (e.g. Drives :0, :1)   | (Drives :2-6)| (e.g. Drv :7)|
@@ -995,7 +1055,7 @@ When using MOD-WIFI-ESP8266 in transparent streaming mode (`CIPMODE=1`), escapin
 
 ## 10. Phased Implementation Roadmap
 
-```
+```text
 =================================================================================
 STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:3 / Slots 0-3)
 =================================================================================

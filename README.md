@@ -51,7 +51,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 
 ## System Architecture
 
-```
+```text
 +-------------------------------------------------------------------------------+
 |                             AGON LIGHT 2 (CLIENT)                             |
 |                                                                               |
