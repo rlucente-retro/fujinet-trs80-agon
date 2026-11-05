@@ -1,6 +1,6 @@
-# Phase 1 Implementation Explanation: Pure DriveWire Network Boot and VDP Glitch Elimination
+# Phase 1 Implementation Explanation: Pure DriveWire Network Boot, VDP Display Stability, and Authentic Break Handling
 
-This document provides a comprehensive, technical explanation of all architectural concepts, design rationales, and assembly code modifications implemented for **Phase 1: Lean Kernel & Network Boot Proof** of the FujiNet TRS-80 integration for the Olimex Agon Light 2.
+This document provides a comprehensive, technical explanation of all architectural concepts, design rationales, assembly code modifications, and empirical verification results implemented for **Phase 1: Lean Kernel & Network Boot Proof** of the FujiNet TRS-80 integration for the Olimex Agon Light 2.
 
 ---
 
@@ -14,6 +14,11 @@ Phase 1 establishes the baseline for running the TRS-80 Model 4 operating system
 3. **Container Format Transparency:** Implemented dynamic container detection supporting both raw sector images (JV1, 0-offset) and authentic Misosys container images (DiskDISK, 1-sector header offset).
 4. **Stage 1 Read-Only Protection:** Implemented hard write rejection (`R_PROTECTED` / Error 15) in the driver layer, guaranteeing that host disk images cannot be corrupted while upstream write routines are audited.
 5. **Agon VDP & Terminal Glitch Elimination:** Resolved all display artifacts, phantom `'P'` keystrokes, and the persistent blinking green block cursor arising from Agon VDP packet traffic and `fabgl::Terminal` emulation.
+6. **Tight Display Loop Freeze Elimination:** Resolved system hangs during high-throughput console output (e.g. `10 PRINT "Hello, world! ": 20 GOTO 10: RUN`) by eliminating interrupt disablement (`DI`) in [`driver-DODVR.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-DODVR.S) and removing unrouted CTS polling in [`driver-UART0.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-UART0.S) and [`interrupt_handler.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/interrupts/interrupt_handler.s).
+7. **Authentic Break & Ctrl-C Handling in BASIC:** Reverse-engineered `BASIC.CMD` Break polling via [`@CKBRKC`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/SVC/SVC106-ckbrkc.s) (SVC 106). Fixed [`scan-kflag.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/lowcore/scan-kflag.s) so `KCKz` non-destructively inspects `BIT 0, (KFLAG$)`, and removed destructive `zABORT` from [`driver-UART0.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-UART0.S), enabling Break and Ctrl-C to cleanly halt running BASIC programs and return to `Ready` without exiting to DOS.
+8. **Dynamic VDP Keycode Decoding & Timeout Protection:** Re-architected `vdp_pkt` to dynamically decode both 2-byte (`[ascii, 0]`) and 4-byte (`[ascii, mod, vk, down]`) `PACKET_KEYCODE` (`0x81`) transmissions from Agon VDP with a 256-iteration safety loop in `u0_gb`, avoiding busy-wait deadlocks.
+9. **BoIP Channel Timeout Optimization:** Extended FujiNet firmware BoIP channel socket timeout to 3000ms (`fujinet-firmware` branch `fix/boip-iowait-timeout`) to ensure rock-solid stability during bursts.
+10. **Disk Image Verification & Auditing Suite:** Created automated Python validation tools in [`tools/`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools) ([`audit_filesystem.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/audit_filesystem.py), [`verify_disk_image.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/verify_disk_image.py), [`verify_all_files.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/verify_all_files.py)) to validate filesystem structures, directory tracks, GAT/HIT tables, and binary integrity of boot disks.
 
 ---
 
@@ -562,6 +567,163 @@ Because `fabgl::Terminal` interprets ANSI/VT100 escape codes, cursor suppression
 
 ---
 
+### 6.4 Resolution of Display Hang During Tight Output Loops
+
+During intensive console output testing in BASIC:
+```basic
+10 PRINT "Hello, world! ";
+20 GOTO 10
+RUN
+```
+The system hung completely after printing several screens of text, locking up keyboard input and terminal updates.
+
+#### 1. Root Cause: Interrupt Starvation via `DI` in `driver-DODVR.S`
+Analysis of [`driver-DODVR.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-DODVR.S) revealed that several internal return routines—specifically `DO_RET1`, `zVDCTL3`, and `z_VDCTL`—explicitly executed `DI` (Disable Interrupts) immediately before returning:
+```z80
+DO_RET1:
+        DI                              ; Upstream bug: permanently disabled interrupts!
+        LD      A, (retcod$)
+        RET
+```
+In normal interactive use, an SVC or driver dispatch would eventually re-execute `EI`. However, during a tight loop like `10 PRINT ...: 20 GOTO 10`, the BASIC interpreter calls the display driver repeatedly without executing any instruction that re-enables interrupts.
+- **Consequences:** Interrupts remained disabled indefinitely.
+- Timer interrupts (`PRT1`) ceased firing, freezing the screen refresh pump in `interrupt_handler.s`.
+- UART0 RX interrupts stopped processing incoming keystrokes, freezing the keyboard.
+
+**The Fix:** Replaced `DI` with `NOP` across `DO_RET1`, `zVDCTL3`, and `z_VDCTL` in [`driver-DODVR.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-DODVR.S), ensuring interrupts remain enabled throughout continuous display output.
+
+#### 2. Root Cause: Unrouted CTS Polling in UART0
+The Olimex Agon Light 2's ESP32 VDP does not route the Clear-To-Send (CTS) handshake line back to eZ80 UART0. Upstream code in [`driver-UART0.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-UART0.S) (`TXUART0`) and [`interrupt_handler.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/interrupts/interrupt_handler.s) checked `UART0_MSR` for CTS before transmitting every character. Because CTS was floating/unconnected, it caused artificial stalls and intermittent transmission delays.
+- **The Fix:** Eliminated CTS polling from `TXUART0` and the video refresh pump, relying solely on Transmitter Holding Register Empty (`THRE` in `UART0_LSR`) and the hardware FIFO status.
+
+---
+
+### 6.5 Authentic Break and Ctrl-C Key Handling in BASIC
+
+When a user pressed `<Break>` or `Ctrl-C` during a running program, the system exhibited two erroneous behaviors:
+1. Pressing `<Break>` or double-Escape dropped the user completely out of BASIC back to the `LS-DOS Ready` prompt, losing unsaved runtime state.
+2. Pressing `Ctrl-C` had zero effect; the loop continued executing unabated.
+
+#### 1. Reverse-Engineering `BASIC.CMD` Break Protocol
+Disassembly of `BASIC.CMD` revealed how Model 4 BASIC handles keyboard aborts:
+- At startup, BASIC sets the operating system Break Vector table entry `BRKVEC$` to `0x0000`. This explicitly tells TRSDOS **not** to execute an asynchronous task abort (`@EXIT` / `RST 40; A=0x93`).
+- Instead, during its execution loop (between BASIC statements), BASIC performs a synchronous check by calling **SVC 106 ([`@CKBRKC`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/SVC/SVC106-ckbrkc.s))**:
+  ```z80
+  ; SVC 106 (@CKBRKC): Check Break Condition
+  ; Returns: NZ (Non-Zero) if Break was pressed, Z if no Break
+  ```
+- Looking at the kernel implementation in [`SVC106-ckbrkc.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/SVC/SVC106-ckbrkc.s):
+  ```z80
+  SVC106:
+          LD      HL, KFLAG$
+          BIT     0, (HL)                 ; Test Break bit
+          RET     Z                       ; Return Z=1 if no Break
+          RES     0, (HL)                 ; Clear Break latch
+          OR      0FFh                    ; Return NZ (Break occurred)
+          RET
+  ```
+  BASIC tests bit 0 of `(KFLAG$)`. If set, it stops the program, prints `Break in <line>`, and returns to the BASIC `Ready` prompt!
+
+#### 2. Root Cause: Destructive Scanning in `scan-kflag.s`
+Inspection of the lowcore keyboard scan routine [`scan-kflag.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/lowcore/scan-kflag.s) revealed why `Ctrl-C` was ignored:
+```z80
+; Upstream scan-kflag.s:
+KCKz:
+        LD      A, (HL)
+        LD      (HL), 0                 ; Upstream bug: wiped KFLAG$ every timer tick!
+        OR      A
+        RET
+```
+Every 25 ms, the timer interrupt invoked `KCKz`. By writing `0` to `(HL)`, it wiped bit 0 before BASIC's execution loop had a chance to call SVC 106. Consequently, BASIC never detected that Break or Ctrl-C had occurred!
+
+**The Fix:** Changed `KCKz` in [`scan-kflag.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/lowcore/scan-kflag.s) to non-destructively test `BIT 0, (HL)` without zeroing `(HL)`:
+```z80
+KCKz:
+        BIT     0, (HL)                 ; Non-destructive test of Break latch
+        RET                             ; Preserves KFLAG$ for SVC 106 (@CKBRKC)
+```
+
+#### 3. Root Cause: Premature Abort in `driver-UART0.S`
+In upstream [`driver-UART0.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-UART0.S), an escape counter (`esccount`) tracked Escape presses:
+```z80
+; Upstream driver-UART0.S:
+        LD      A, (esccount)
+        INC     A
+        CP      2
+        JP      Z, zABORT               ; Double Escape -> jumped to @EXIT (DOS abort)!
+```
+Because the Agon sends Escape sequences and users pressed Escape/Break, `zABORT` forcibly killed BASIC and returned to DOS.
+
+**The Fix:**
+- Removed `esccount` and `jp zABORT` entirely from [`driver-UART0.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-UART0.S).
+- When Escape (`0x1B`) or Ctrl-C (`0x03`) is detected:
+  1. Set bit 0 of `KFLAG$`: `SET 0, (IX+KFLAG$)`.
+  2. Set `BRKRECD` latch: `LD (IX+BRKRECD), 0FFh`.
+  3. Load `A = 0x80` (authentic Model 4 Break keycode) into register `C`.
+  4. Return through the normal character delivery path.
+- Now, when Break or Ctrl-C is pressed, `KFLAG$` bit 0 latches, and BASIC's next `@CKBRKC` call catches it and cleanly prints `Break in <line>` without exiting to DOS.
+
+#### 4. VDP Packet Length Polymorphism & Timeout Protection
+Agon VDP emits `PACKET_KEYCODE` (`0x81`) with variable payload lengths:
+- **2-byte packets (`[ascii, 0]`):** Emitted by `sendKeycodeByte` during quick keypresses or terminal translations.
+- **4-byte packets (`[ascii, mod, vk, down]`):** Emitted by `processEventQueue` for full key state events.
+
+Prior code hardcoded four consecutive reads from `UART0_RBR`. On 2-byte packets, the eZ80 hung forever waiting for the 3rd and 4th bytes that were never sent.
+
+**The Fix:**
+1. Dynamic length decoding in `vdp_pkt`:
+   ```z80
+   CALL    u0_gb                   ; Read byte 1: ASCII code
+   LD      D, A                    ; Save ASCII
+   DEC     E                       ; Decrement payload length (E)
+   JR      Z, vdp_kdone            ; If 1 byte payload, finished
+   CALL    u0_gb                   ; Byte 2: Modifiers
+   DEC     E
+   JR      Z, vdp_kdone
+   CALL    u0_gb                   ; Byte 3: VK code
+   DEC     E
+   JR      Z, vdp_kdone
+   CALL    u0_gb                   ; Byte 4: Key state (pressed/released)
+   DEC     E
+   ```
+2. Safe Polling with Timeout (`u0_gb`):
+   Instead of an infinite loop on `UART0_LSR`, `u0_gb` was given a 256-iteration loop using `DJNZ`:
+   ```z80
+   u0_gb:
+           PUSH    BC
+           LD      B, 0                    ; 256 timeout attempts
+   u0_gb_lp:
+           IN0     A, (UART0_LSR)
+           AND     UART_DR
+           JR      NZ, u0_gb_got
+           DJNZ    u0_gb_lp
+           POP     BC
+           XOR     A                       ; Timeout fallback: return 0
+           RET
+   u0_gb_got:
+           IN0     A, (UART0_RBR)
+           POP     BC
+           RET
+   ```
+   If a packet byte is dropped or delayed, `u0_gb` gracefully times out and returns `0` rather than locking the CPU.
+
+#### 5. Linker Segment Budgeting (Section `$$$org02E94663`)
+In Daniel Paul Martin's memory architecture for `trs-os-zds`, the driver segment `$$$org02E94663` is constrained to start at `0x000E00` and must terminate strictly before `0x001300`, where `zspace.BYTEIO$` begins. Exceeding `0x001300` triggers ZDS II Linker Warning 747 (`Segment overlap occurs while binding... option warning=fatal`).
+- By streamlining `vdp_eval` (combining `'c'` and `'C'` checks via `RES 5, A; CP 'C'`) and replacing multi-instruction compares with `CP (IX+LOGBRK)`, the segment was trimmed to terminate at **`0x0012FD`** (2 bytes below the ceiling), achieving a clean build with **0 errors and 0 warnings**.
+
+---
+
+### 6.6 FujiNet BoIP Channel Timeout Optimization
+
+During large burst file transfers (such as loading `BASIC.CMD` or large binary overlays over BoIP), `fujinet-firmware`'s TCP bridge was subject to short default select timeouts (500 ms). If host CPU scheduling delayed an acknowledgment, the BoIP socket dropped the frame.
+- In [`fujinet-firmware/lib/bus/drivewire/boipChannel.cpp`](file:///Users/richardlucente/development/git/fujinet-firmware/lib/bus/drivewire/boipChannel.cpp), the IO wait timeout was increased:
+  ```cpp
+  #define BOIP_IO_WAIT_TIMEOUT 3000 // Increased from 500ms to 3000ms
+  ```
+- This change (committed on branch `fix/boip-iowait-timeout`, commit [`032bcbdda`](file:///Users/richardlucente/development/git/fujinet-firmware)) eliminates transmission drops during high-load emulation and real Wi-Fi streaming.
+
+---
+
 ## 7. Step-by-Step Execution Trace
 
 ### 7.1 Cold Boot Sequence
@@ -637,34 +799,97 @@ To definitively verify the total elimination of the blinking block cursor, an au
 **Conclusion:** Active cursor pixels in the lower half of the screen across both ON and OFF phases are **strictly zero**.
 
 ### 8.3 Interactive Command Verification
-- Executed `DIR` followed by ``.
+- Executed `DIR` followed by `<Enter>`.
 - Directory listing rendered cleanly without display corruption or lingering cursor blocks (`trsdos_dir_clean_success2.png`).
 - Native software underscore cursor `_` advanced correctly to the next command prompt line.
+
+### 8.4 BASIC Execution, Display Loop, and Break Verification
+- **Program Loading & Merging:**
+  - Loaded Model 4 BASIC from Drive `:0` via `BASIC`.
+  - Executed `NEW` and `MERGE "ELIZA/BAS:0"`.
+  - Verified tokenized line parsing and extents using `LIST 10-50`; lines listed cleanly with zero corruption.
+- **Tight Display Loop Stress Test:**
+  - Entered infinite loop:
+    ```basic
+    10 PRINT "Hello, world! ";
+    20 GOTO 10
+    RUN
+    ```
+  - Output streamed continuously across dozens of screen rolls without freezing, dropped characters, or timing out.
+- **Graceful Break Interruption:**
+  - Pressed `<Break>`: The display halted immediately, printed `Break in 10`, and returned cleanly to the BASIC `Ready` prompt. The program remained in memory, and the user did not drop back to DOS.
+- **Graceful Ctrl-C Interruption:**
+  - Typed `RUN` to restart the loop and pressed `Ctrl-C`: Program execution stopped instantly, returning to the BASIC `Ready` prompt with full state preserved.
+
+### 8.5 Disk Image & Filesystem Verification Suite
+To verify the integrity of the network boot volume and disk structures, automated Python verification tools were implemented in [`tools/`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools):
+1. **[`verify_disk_image.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/verify_disk_image.py):**
+   - Validated `boot_volume.dsk` geometry: DiskDISK container, 40 cylinders, 18 sectors/track, double density, 1 head, 720 sectors total.
+   - Verified that physical Sector 0 contains the authentic Misosys header and that Sector 1 maps to filesystem Sector 0 (LSN 0).
+2. **[`audit_filesystem.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/audit_filesystem.py):**
+   - Audited Track 17 directory cylinder: Verified GAT (Granule Allocation Table), HIT (Hash Index Table), and FXDE directory entries.
+   - Confirmed all required system files (`SYS0.SYS` through `SYS6.SYS`) and user utilities are contiguous and correctly bounded.
+3. **[`verify_all_files.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/verify_all_files.py):**
+   - Verified EOF byte counts, sector allocations, and parity checksums across all directory entries.
 
 ---
 
 ## 9. Summary of Modified Files and Repository Status
 
-### Repositories Involved:
-1. **`trs-os-zds` (Branch: `fujinet-dw-boot`):**
-   - [`TRSDOS_7/SYSRES/drivers/driver-UART0.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-UART0.S): VDP packet decoder, startup FIFO drain, `hide_vdp_cursor`, absolute jump fixes.
-   - [`TRSDOS_7/SYS0_IPL/ipl-strings.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl-strings.s): VT100 cursor suppression in `vt100_clear$`.
-   - [`TRSDOS_7/SYS0_IPL/ipl_sessions.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl_sessions.s): `session_cmd$` initialization to spaces.
-   - [`TRSDOS_7/SYS0_IPL/ipl-trsdos.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl-trsdos.s): Cursor origin set to `0,0`.
-   - [`TRSDOS_7/SYSRES/memory/memory_video.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/memory/memory_video.s): 9-byte prefix (`ESC [ f` + `ESC [ ? 25 l`).
-   - [`TRSDOS_7/SYSRES/interrupts/interrupt_handler.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/interrupts/interrupt_handler.s): Video refresh pump expanded to `CRTSIZE+9`.
-   - [`patches/0003-fix-vdp-display-and-keyboard-glitches.patch`](file:///Users/richardlucente/development/git/trs-os-zds/patches/0003-fix-vdp-display-and-keyboard-glitches.patch): Consolidated, self-contained patch cleanly applying against upstream sources.
-2. **`fujinet-trs80-agon` (Branch: `main`):**
-   - Architectural roadmap, verification criteria, and Phase 1 documentation.
+### 9.1 Upstream Repositories and Branches
+All modifications have been committed and pushed to the corresponding repositories under the `rlucente-retro` organization:
+
+| Repository | Remote URL | Active Branch | Latest Commit | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **`trs-os-zds`** | `git@github.com:rlucente-retro/trs-os-zds.git` | `fujinet-dw-boot` | [`ee88f2e`](file:///Users/richardlucente/development/git/trs-os-zds) | Committed & Pushed Upstream |
+| **`fujinet-firmware`** | `git@github.com:rlucente-retro/fujinet-firmware.git` | `fix/boip-iowait-timeout` | [`032bcbdda`](file:///Users/richardlucente/development/git/fujinet-firmware) | Committed & Pushed Upstream |
+| **`fujinet-trs80-agon`** | `git@github.com:rlucente-retro/fujinet-trs80-agon.git` | `main` | Current | Documentation & Tools Suite |
+
+---
+
+### 9.2 Modified Files Breakdown
+
+#### 1. Core Operating System (`trs-os-zds`):
+* **[`TRSDOS_7/SYSRES/drivers/driver-DODVR.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-DODVR.S):** Replaced `DI` with `NOP` in `DO_RET1`, `zVDCTL3`, and `z_VDCTL` to prevent interrupt starvation during intensive display output.
+* **[`TRSDOS_7/SYSRES/drivers/driver-UART0.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-UART0.S):**
+  - Removed unrouted CTS hardware polling to eliminate transmission stalls.
+  - Implemented dynamic Agon VDP `PACKET_KEYCODE` (`0x81`) decoding handling both 2-byte and 4-byte payloads.
+  - Added 256-iteration safety loop via `DJNZ` in `u0_gb` to prevent busy-wait lockups.
+  - Removed `esccount` and `jp zABORT`; latched Break events into `KFLAG$` bit 0 and emitted authentic `0x80` Break code.
+  - Optimized driver segment (`$$$org02E94663`) to terminate at `0x0012FD`, strictly satisfying the `< 0x001300` ZDS II linker boundary.
+* **[`TRSDOS_7/SYSRES/lowcore/scan-kflag.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/lowcore/scan-kflag.s):** Changed `KCKz` to non-destructively test `BIT 0, (HL)` without zeroing `(HL)`, preserving the Break latch for SVC 106 ([`@CKBRKC`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/SVC/SVC106-ckbrkc.s)).
+* **[`TRSDOS_7/SYSRES/interrupts/interrupt_handler.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/interrupts/interrupt_handler.s):** Expanded video pump buffer to `CRTSIZE+9` (`ESC [ f` + `ESC [ ? 25 l` prefix) and removed unrouted CTS checks.
+* **[`TRSDOS_7/SYSRES/memory/memory_video.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/memory/memory_video.s):** Allocated 9-byte prefix before `zspace.VIDEO$` for ANSI cursor suppression.
+* **[`TRSDOS_7/SYSRES/drivers/driver-FDCDVR.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-FDCDVR.S):** Integrated DriveWire `OP_READEX` (`0xD2`) sector reads, big-endian 16-bit checksums, dynamic container offset (`dw_offset`), and Stage 1 write protection (`DOWRIT` rejecting with Error 15).
+* **[`TRSDOS_7/SYS0_IPL/ipl-BIOS.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl-BIOS.s):** Replaced legacy RAM disk IPL with pure network DriveWire boot from Slot 0; implemented `'DiskDISK'` container detection.
+* **[`TRSDOS_7/SYS0_IPL/ipl-DOS.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl-DOS.S):** Streamlined auto-boot directly to `default_ipl`.
+* **[`TRSDOS_7/SYS0_IPL/ipl-strings.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl-strings.s):** Suppressed VDP cursor in `vt100_clear$`.
+* **[`TRSDOS_7/SYS0_IPL/ipl_sessions.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl_sessions.s):** Initialized `session_cmd$` with spaces to avoid double prompt execution.
+* **[`TRSDOS_7/SYS0_IPL/ipl-trsdos.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl-trsdos.s):** Positioned cursor at `(0, 0)`.
+* **[`TRSDOS_GLOBAL/equates/equates-global-lowcore.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_GLOBAL/equates/equates-global-lowcore.s):** Exported global DriveWire equates.
+
+#### 2. Server Firmware (`fujinet-firmware`):
+* **[`lib/bus/drivewire/boipChannel.cpp`](file:///Users/richardlucente/development/git/fujinet-firmware/lib/bus/drivewire/boipChannel.cpp):** Increased `BOIP_IO_WAIT_TIMEOUT` to 3000ms.
+
+#### 3. Verification & Diagnostic Tools (`fujinet-trs80-agon`):
+* **[`tools/audit_filesystem.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/audit_filesystem.py):** TRSDOS/LS-DOS 6.3 filesystem structure auditor.
+* **[`tools/verify_disk_image.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/verify_disk_image.py):** Sector LSN and geometry validator.
+* **[`tools/verify_all_files.py`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools/verify_all_files.py):** Extents, parity, and EOF bounds checker.
 
 ---
 
 ## 10. Next Steps: Readiness for Phase 2
 
-With Phase 1 qualified and verified:
-- **Phase 2 Objectives:** Core Storage Driver Routing:
-  - Refactoring `driver-FDCDVR.S` into a modular router dispatching to:
-    - `driver-DWDVR.S`: Dedicated DriveWire network storage driver supporting Drives `:0` through `:3`.
-    - `driver-SDDVR.S`: On-board Agon microSD SPI0 block I/O driver for local `.dsk` files.
-  - Adding explicit UART1 hardware initialization in `finish_init` (`SYS0_IPL`).
-  - Expanding drive mapping tables to support hybrid operation (e.g. Drive `:0` network boot, Drive `:1` local SD card).
+With Phase 1 100% complete, verified, and pushed upstream:
+
+### Phase 2 Architecture: Core Storage Driver Routing
+1. **Modular Driver Router (`driver-FDCDVR.S`):**
+   - Refactor `driver-FDCDVR.S` from a monolithic driver into a clean router dispatching logical drives `:0` through `:7` according to a unified drive-type table.
+2. **Dedicated DriveWire Network Driver (`driver-DWDVR.S`):**
+   - Extract the tested Phase 1 DriveWire routines into an independent driver module supporting virtual device slots 0 through 3.
+3. **Local MicroSD Hardware Driver (`driver-SDDVR.S`):**
+   - Implement direct eZ80 SPI0 block I/O (`PB1`–`PB4`) to mount and read/write local `.dsk` files stored on the Agon Light 2 FAT32 microSD card.
+4. **Explicit UART1 Initialization:**
+   - Add explicit UART1 hardware configuration (IER=0, FCTL=07h, LCR=03h, MCR=03h) in `finish_init` (`SYS0_IPL`) to guarantee continuous polled streaming under all boot conditions.
+5. **Hybrid Drive Mapping:**
+   - Establish initial drive mapping configurations allowing Drive `:0` to boot from FujiNet over the network while secondary drives (e.g. Drive `:1`) reside on the local Agon microSD card.

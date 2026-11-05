@@ -3,6 +3,7 @@
 
 > [!NOTE]
 > These research notes document historical and emulator TRS-80 Model 4 disk and hard drive image formats, detailing their binary structures, addressing mechanisms, and compatibility with the FujiNet DriveWire protocol. This document serves as the basis for future updates to [FUJINET-TRS80-INTEGRATION-PLAN.md](file:///Users/richardlucente/development/git/fujinet-trs80-agon/FUJINET-TRS80-INTEGRATION-PLAN.md).
+> Automated validation and filesystem audit scripts implementing these format checks are available in [`tools/`](tools) ([`verify_disk_image.py`](tools/verify_disk_image.py), [`audit_filesystem.py`](tools/audit_filesystem.py), and [`verify_all_files.py`](tools/verify_all_files.py)).
 
 ---
 

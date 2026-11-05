@@ -1061,11 +1061,15 @@ STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:3 / Slots
 =================================================================================
 
 +-------------------------------------------------------------------------------+
-| PHASE 1: Lean Kernel & Network Boot Proof                                     |
+| PHASE 1: Lean Kernel & Network Boot Proof [COMPLETED & QUALIFIED]             |
 | - Build lean ~64 KB TRSDOS.bin (eliminating embedded 425 KB RAM disk).        |
 | - Verify pure network boot of Drive :0 from FujiNet Slot 0 in emulator/bench. |
 | - Test directory listing (DIR :0) and file loading (LOAD "ELIZA/BAS:0").      |
 | - Verify write rejection (R_PROTECTED / Error 15) on network drives.          |
+| - Eliminate VDP cursor glitches, phantom keystrokes, and double prompts.      |
+| - Fix high-throughput display loop freeze (remove DI in driver-DODVR.S).      |
+| - Fix Break / Ctrl-C handling in BASIC (non-destructive KFLAG$, dynamic VDP). |
+| - Verify boot volume with Python filesystem audit and disk verification tools.|
 +-------------------------------------------------------------------------------+
                                         |
                                         v
@@ -1137,30 +1141,33 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 
 ## 11. Verification & Test Matrix
 
-| Test ID | Objective | Test Procedure | Acceptance Criteria |
-| :--- | :--- | :--- | :--- |
-| **TC-01** | Server Silence Verification | Connect to port 65504 on loopback; monitor for 10 seconds. | Zero bytes received prior to first client command `0xE2 0x00`. |
-| **TC-02a** | Direct Serial Handover | Connect MOD-USB-RS232; boot via `FNBOOT` or `OSboot`. | Boots cleanly to TRSDOS Ready; UART1 functions in polled mode. |
-| **TC-02b** | Wi-Fi Handover | Connect MOD-WIFI-ESP8266; run `openstream` -> `FNBOOT`. | Stream preserved; TRSDOS boots to prompt without freezing. |
-| **TC-02c** | Pure Network Boot of Drive `:0`| Boot `TRSDOS.bin` with no local disk; mount `:0` on Net Slot 0. | Reads Sector 0, GAT, and `SYS0`..`SYS6` from FujiNet; prompt appears. |
-| **TC-03** | Checksum Vectors | Compute checksum across known 256B test vectors. | Matches big-endian unsigned summation sum(b_i) % 65536 exactly. |
-| **TC-04** | `OP_READEX` Verification | Read known sector from Drive `:0` via `0xD2` opcode. | 256 bytes read, client checksum sent, status byte `0x00` returned. |
-| **TC-05** | Write Rejection (Stage 1) | Attempt write to network drive (`SAVE "TEST:0"`). | Immediate `R_PROTECTED` (error 15); host image remains unmodified. |
-| **TC-06** | Container Offset Verification | Read Sector 0 from raw JV1 vs DiskDISK image. | Correctly adds +0 for JV1 (LSN 0) and +1 for DiskDISK (LSN 1); returns valid GAT. |
-| **TC-07** | `FNSTATUS` Verification | Run `FNSTATUS` from TRSDOS Ready prompt. | Correctly parses and prints 140-byte adapter configuration via `@DSPLY`. |
-| **TC-08** | Host Table Management | Run `FNHOSTS` and `FNSETH 0 "tnfs.fujinet.online"`. | Displays 8 slots (256 bytes); updates and persists slot 0 without case distortion. |
-| **TC-09** | Device Table Query | Run `FNDEVS` from TRSDOS Ready prompt. | Correctly queries device slot table (152B for 4 slots in Stage 1; 304B for 8 slots in Stage 2). |
-| **TC-10** | Path Quoting Case Preservation | Run `FNSETDEV 0 0 1 "/disks/trs80/game.dsk"`. | Server mounts exact path without uppercase conversion (`/disks/...`, not `/DISKS/...`). |
-| **TC-11** | Live DCT Geometry Synchronization | Run `FNMNTIMG 1 1` on unmounted Drive `:1`. | Sector 0 read; DCT geometry populated; byte 0 changed to `0xC3`; `DIR :1` succeeds. |
-| **TC-12** | Directory & File Execution | Run `DIR :0` and load executable (`RUN "TEST/CMD:0"`). | Directory displays files; executable loads and runs cleanly. |
-| **TC-13** | Timer 1 Clock Stability | Perform multi-sector file load (>= 64 sectors). | System time-of-day clock does not drift by > 1 tick during transfer. |
-| **TC-14** | Stage 2 Multi-Drive Expansion | Mount unique disks across FujiNet slots 0–7; access Drives :0..:7 (or :1..:7 in hybrid mode). | All drives respond independently without data crosstalk or buffer pollution. |
-| **TC-15** | Stage 2 Writable Storage | Write 10 sectors via `SAVE`; verify on server. | Host image SHA-256 matches written data; no trailing image corruption. |
-| **TC-16** | RTC Normalization (`OP_TIME`) | Run system clock init via `driver-TOD.S`. | Year 126 normalized to 26; `DATE$` renders valid `MM/DD/26` date string. |
-| **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. |
-| **TC-18** | MOS File Tools Verification | In MOS, run `*TRSDIR`, `*TRSEXT`, `*TRSADD` on test image. | Files extracted and added match binary SHA-256 hashes. |
-| **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. |
-| **TC-20** | Expanded RAM & `MEMDISK` | Mount RAM disk via `MEMDISK :4`; execute directory and file copy. | Sectors read/write via eZ80 24-bit LDIR in 27.7 µs; @BANK switches banks cleanly. |
+| Test ID | Objective | Test Procedure | Acceptance Criteria | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **TC-01** | Server Silence Verification | Connect to port 65504 on loopback; monitor for 10 seconds. | Zero bytes received prior to first client command `0xE2 0x00`. | **PASS (Phase 1 Verified)** |
+| **TC-02a** | Direct Serial Handover | Connect MOD-USB-RS232; boot via `FNBOOT` or `OSboot`. | Boots cleanly to TRSDOS Ready; UART1 functions in polled mode. | **PASS (Phase 1 Verified)** |
+| **TC-02b** | Wi-Fi Handover | Connect MOD-WIFI-ESP8266; run `openstream` -> `FNBOOT`. | Stream preserved; TRSDOS boots to prompt without freezing. | **PASS (Phase 1 Verified)** |
+| **TC-02c** | Pure Network Boot of Drive `:0`| Boot `TRSDOS.bin` with no local disk; mount `:0` on Net Slot 0. | Reads Sector 0, GAT, and `SYS0`..`SYS6` from FujiNet; prompt appears. | **PASS (Phase 1 Verified)** |
+| **TC-03** | Checksum Vectors | Compute checksum across known 256B test vectors. | Matches big-endian unsigned summation sum(b_i) % 65536 exactly. | **PASS (Phase 1 Verified)** |
+| **TC-04** | `OP_READEX` Verification | Read known sector from Drive `:0` via `0xD2` opcode. | 256 bytes read, client checksum sent, status byte `0x00` returned. | **PASS (Phase 1 Verified)** |
+| **TC-05** | Write Rejection (Stage 1) | Attempt write to network drive (`SAVE "TEST:0"`). | Immediate `R_PROTECTED` (error 15); host image remains unmodified. | **PASS (Phase 1 Verified)** |
+| **TC-06** | Container Offset Verification | Read Sector 0 from raw JV1 vs DiskDISK image. | Correctly adds +0 for JV1 (LSN 0) and +1 for DiskDISK (LSN 1); returns valid GAT. | **PASS (Phase 1 Verified)** |
+| **TC-06a**| Display Loop Stability | Run tight loop `10 PRINT "Hello, world! ": 20 GOTO 10: RUN` in BASIC. | Runs continuously without freezing; interrupts stay enabled via NOP in DODVR. | **PASS (Phase 1 Verified)** |
+| **TC-06b**| Break & Ctrl-C in BASIC | Press `<Break>` or `Ctrl-C` during loop execution in BASIC. | Cleanly halts with `Break in <line>` and returns to BASIC `Ready` (no DOS abort). | **PASS (Phase 1 Verified)** |
+| **TC-06c**| Boot Volume & FS Audit | Run `verify_disk_image.py` and `audit_filesystem.py` on boot image. | Validates DiskDISK header, Track 17 GAT/HIT, and SYS file extents with 0 errors. | **PASS (Phase 1 Verified)** |
+| **TC-07** | `FNSTATUS` Verification | Run `FNSTATUS` from TRSDOS Ready prompt. | Correctly parses and prints 140-byte adapter configuration via `@DSPLY`. | Pending Phase 4 |
+| **TC-08** | Host Table Management | Run `FNHOSTS` and `FNSETH 0 "tnfs.fujinet.online"`. | Displays 8 slots (256 bytes); updates and persists slot 0 without case distortion. | Pending Phase 4 |
+| **TC-09** | Device Table Query | Run `FNDEVS` from TRSDOS Ready prompt. | Correctly queries device slot table (152B for 4 slots in Stage 1; 304B for 8 slots in Stage 2). | Pending Phase 4 |
+| **TC-10** | Path Quoting Case Preservation | Run `FNSETDEV 0 0 1 "/disks/trs80/game.dsk"`. | Server mounts exact path without uppercase conversion (`/disks/...`, not `/DISKS/...`). | Pending Phase 4 |
+| **TC-11** | Live DCT Geometry Synchronization | Run `FNMNTIMG 1 1` on unmounted Drive `:1`. | Sector 0 read; DCT geometry populated; byte 0 changed to `0xC3`; `DIR :1` succeeds. | Pending Phase 4 |
+| **TC-12** | Directory & File Execution | Run `DIR :0` and load executable (`RUN "TEST/CMD:0"`). | Directory displays files; executable loads and runs cleanly. | **PASS (Phase 1 Verified)** |
+| **TC-13** | Timer 1 Clock Stability | Perform multi-sector file load (>= 64 sectors). | System time-of-day clock does not drift by > 1 tick during transfer. | Pending Phase 5 |
+| **TC-14** | Stage 2 Multi-Drive Expansion | Mount unique disks across FujiNet slots 0–7; access Drives :0..:7 (or :1..:7 in hybrid mode). | All drives respond independently without data crosstalk or buffer pollution. | Pending Phase 7 |
+| **TC-15** | Stage 2 Writable Storage | Write 10 sectors via `SAVE`; verify on server. | Host image SHA-256 matches written data; no trailing image corruption. | Pending Phase 7 |
+| **TC-16** | RTC Normalization (`OP_TIME`) | Run system clock init via `driver-TOD.S`. | Year 126 normalized to 26; `DATE$` renders valid `MM/DD/26` date string. | Pending Phase 8 |
+| **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. | Pending Phase 2 |
+| **TC-18** | MOS File Tools Verification | In MOS, run `*TRSDIR`, `*TRSEXT`, `*TRSADD` on test image. | Files extracted and added match binary SHA-256 hashes. | Pending Phase 4 |
+| **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. | Pending Phase 2 |
+| **TC-20** | Expanded RAM & `MEMDISK` | Mount RAM disk via `MEMDISK :4`; execute directory and file copy. | Sectors read/write via eZ80 24-bit LDIR in 27.7 µs; @BANK switches banks cleanly. | Pending Phase 8 |
 
 ---
 
@@ -1168,14 +1175,15 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 
 ### 12.1 Primary Repositories
 
-| Project / Component | Upstream GitHub Repository | Role in Integration |
-| :--- | :--- | :--- |
-| **`agon-net-utils`** | [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils) | Agon Quark MOS utilities (`openstream`, `sendstream`, `closestream`) managing ESP8266 transparent streaming mode (`CIPMODE=1`) for Wi-Fi; not required for direct serial links. |
-| **`trs-net-tcp`** | [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp) | Legacy Python TCP/serial disk server (`trs-netd.py`) and protocol evaluation documentation being superseded. |
-| **`trs-os-zds`** | [rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds) | Core operating system source tree (`TRSDOS_7`), Agon Light 2 patchset, and ZDS II Wine build automation for `TRSDOS.bin`. |
-| **`fujinet-firmware`** | [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware) | Target server framework providing DriveWire (`BUILD_COCO`) block I/O, `OP_FUJI` transactions, and BoIP/serial transports. |
-| **`nitros9`** | [nitros-9/nitros9](https://github.com/nitros-9/nitros9) | Reference implementations for the 9 FujiNet client utilities targeting DriveWire on NitrOS-9. |
-| **`OSboot` Loader** | [sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) | MOS bootstrap loader for launching `TRSDOS.bin` while maintaining UART1 streaming continuity. |
+| Project / Component | Upstream GitHub Repository | Role in Integration | Status / Branch |
+| :--- | :--- | :--- | :--- |
+| **`fujinet-trs80-agon`** | [rlucente-retro/fujinet-trs80-agon](https://github.com/rlucente-retro/fujinet-trs80-agon) | Specification, architectural documentation, diagnostic tools, and packaging utilities. | `main` |
+| **`trs-os-zds`** | [rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds) | Core operating system source tree (`TRSDOS_7`), Agon Light 2 patchset, and ZDS II Wine build automation for `TRSDOS.bin`. | `fujinet-dw-boot` ([`ee88f2e`](https://github.com/rlucente-retro/trs-os-zds/commit/ee88f2e)) |
+| **`fujinet-firmware`** | [rlucente-retro/fujinet-firmware](https://github.com/rlucente-retro/fujinet-firmware) | Fork of [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware) providing DriveWire (`BUILD_COCO`) block I/O, `OP_FUJI` transactions, and BoIP/serial transports. | `fix/boip-iowait-timeout` ([`032bcbdda`](https://github.com/rlucente-retro/fujinet-firmware/commit/032bcbdda)) |
+| **`agon-net-utils`** | [rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils) | Agon Quark MOS utilities (`openstream`, `sendstream`, `closestream`) managing ESP8266 transparent streaming mode (`CIPMODE=1`) for Wi-Fi; not required for direct serial links. | `master` |
+| **`trs-net-tcp`** | [rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp) | Legacy Python TCP/serial disk server (`trs-netd.py`) and protocol evaluation documentation being superseded. | Reference |
+| **`nitros9`** | [nitros-9/nitros9](https://github.com/nitros-9/nitros9) | Reference implementations for the 9 FujiNet client utilities targeting DriveWire on NitrOS-9. | Reference |
+| **`OSboot` Loader** | [sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) | MOS bootstrap loader for launching `TRSDOS.bin` while maintaining UART1 streaming continuity. | Reference |
 
 ### 12.2 NitrOS-9 FujiNet Reference Source Files
 

@@ -44,7 +44,9 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 
 ## Documentation
 
+* **Phase 1 Implementation & Technical Explanation:** [`PHASE1-IMPLEMENTATION-EXPLANATION.md`](PHASE1-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 1 deliverables, including lean kernel architecture (~64 KB), DriveWire `OP_READEX` network IPL, VDP cursor suppression, display loop hang resolution, and authentic Model 4 Break & Ctrl-C handling.
 * **Comprehensive Architectural & Integration Specification:** [`FUJINET-TRS80-INTEGRATION-PLAN.md`](FUJINET-TRS80-INTEGRATION-PLAN.md) — Authoritative technical specification covering the three-layer execution model, boot chain, wire protocols, assembly driver modifications, local SD card block drivers, the native TRSDOS/MOS utility suites, hardware constraints, and phased implementation milestones.
+* **Disk & Hard Drive Image Format Analysis:** [`DISK-IMAGE-FORMAT-ANALYSIS.md`](DISK-IMAGE-FORMAT-ANALYSIS.md) — Binary format specifications and addressing mechanics for JV1, DiskDISK, JV3, DMK, and Reed HDV images, detailing DriveWire compatibility and geometry extraction.
 * **Agon OSboot Bootstrap Loader:** [Shawn Sijnstra's OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) — MOS bootstrap utility for booting `TRSDOS.bin` while preserving UART1 streaming connections.
 
 ---
@@ -180,11 +182,21 @@ Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
 
 ---
 
+## Development & Verification Tools (`tools/`)
+
+The repository includes a standalone Python diagnostic and verification suite for testing and inspecting TRSDOS/LS-DOS disk images and network booting:
+
+* **[`tools/audit_filesystem.py`](tools/audit_filesystem.py):** Comprehensive filesystem auditor that parses the Track 17 Directory Cylinder, validates Granule Allocation Tables (GAT), Hash Index Tables (HIT), and File Extended Directory Entries (FXDE), and reports disk geometry and file extents.
+* **[`tools/verify_disk_image.py`](tools/verify_disk_image.py):** Validates raw JV1 and Misosys DiskDISK container structures, confirming physical-to-logical sector mappings, authentic DCT headers, and checksum validity.
+* **[`tools/verify_all_files.py`](tools/verify_all_files.py):** Traverses all directory entries on a disk image to verify end-of-file (EOF) bounds, sector allocations, and directory record integrity.
+
+---
+
 ## Related Repositories & Reference Codebases
 
+* **`trs-os-zds`** ([rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds), branch `fujinet-dw-boot`): Core operating system source tree (`TRSDOS_7`), Agon Light 2 patchset, and ZDS II Wine build automation for `TRSDOS.bin`.
+* **`fujinet-firmware`** ([rlucente-retro/fujinet-firmware](https://github.com/rlucente-retro/fujinet-firmware), branch `fix/boip-iowait-timeout`): Fork of [FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware) providing DriveWire (`BUILD_COCO`) block I/O, `OP_FUJI` transactions, and optimized BoIP socket timeouts.
 * **`agon-net-utils`** ([rlucente-retro/agon-net-utils](https://github.com/rlucente-retro/agon-net-utils)): Agon Quark MOS network utilities (`openstream`, `sendstream`, `closestream`).
 * **`trs-net-tcp`** ([rlucente-retro/trs-net-tcp](https://github.com/rlucente-retro/trs-net-tcp)): Previous Python-based TCP/serial disk daemon for the initial Agon TRSDOS port.
-* **`trs-os-zds`** ([rlucente-retro/trs-os-zds](https://github.com/rlucente-retro/trs-os-zds)): TRSDOS 6.3.1 eZ80 kernel build automation and Agon Light 2 patchset.
-* **`fujinet-firmware`** ([FujiNetWIFI/fujinet-firmware](https://github.com/FujiNetWIFI/fujinet-firmware)): Core multi-platform FujiNet firmware (`BUILD_COCO` DriveWire target).
 * **`nitros9`** ([nitros-9/nitros9](https://github.com/nitros-9/nitros9)): Reference 6809 assembly FujiNet utilities for NitrOS-9 ([`level1/cmds/fn*.as`](https://github.com/nitros-9/nitros9/tree/main/level1/cmds)).
 * **`OSboot`** ([sijnstra/agon-projects/OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot)): MOS bootstrap loader for launching `TRSDOS.bin`.
