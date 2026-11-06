@@ -761,20 +761,27 @@ During large burst file transfers (such as loading `BASIC.CMD` or large binary o
 5. FujiNet returns the directory sectors; checksums are verified; file listings are formatted into `zspace.VIDEO$`.
 6. The video pump in `interrupt_handler.s` transmits `ESC [ f`, `ESC [ ? 25 l`, and the updated 1920 screen bytes to UART0, rendering the directory listing cleanly.
 
-### 7.3 Write Attempt Rejection (`SAVE "TEST:0"`)
-1. User or application attempts to create or save a file to Drive `:0`.
-2. Operating system invokes `FDCDVR` with a write operation.
-3. Driver enters `DOWRIT`:
+### 7.3 Write Attempt Rejection (`SAVE "TEST/BAS:0"`)
+1. User or application attempts to create or save a file to Drive `:0` (e.g., executing `SAVE "TEST/BAS:0"` from the BASIC prompt).
+2. **Directory Search Phase:** Before writing file data, TRSDOS / LS-DOS (`SYS4`) performs essential directory operations:
+   - Reads the Directory Track (Track 17) over DriveWire, scanning the GAT (Granule Allocation Table) and HIT (Hash Index Table).
+   - Inspects the File Extended Directory Entries (FXDE) to check whether `TEST/BAS` already exists (to prevent collisions or prepare for extension) and locates an available directory slot.
+3. **Write Interception Phase:** Once `SYS4` prepares the allocation and attempts to commit the new directory record or write the first 256-byte data sector, it invokes the storage driver's write routine (Function 13 or 14).
+4. Driver enters `DOWRIT`:
    ```z80
-   DOWRIT:
-           pop     bc
+   DOWRIT: ; Stage 1 write protection: reject all writes with R_PROTECTED (Error 15)
+           pop     bc                      ; Restore caller registers
            pop     hl
-           ld      a, 15                   ; Error 15 = R_PROTECTED
-           or      a                       ; Set NZ flag
-           ei
+           ld      a, 15                   ; Error 15 = R_PROTECTED (Write Protected)
+           or      a                       ; Set Non-Zero (NZ) flag indicating error
+           ei                              ; Keep interrupts enabled
            ret
    ```
-4. System immediately aborts the write with Error 15 (`Write protected disk`), emitting zero bytes over UART1 and preserving the host disk image.
+5. **Clean Abort & Media Integrity:**
+   - The operating system maps error 15 to the standard error string `"Disk write protected"` and aborts the save operation.
+   - Zero write packets (`OP_WRITE` `0x57`) are emitted over the UART1 DriveWire bus.
+   - The host `.dsk` image on FujiNet remains completely untouched.
+   - The operating system and BASIC session remain fully active and responsive.
 
 ---
 
@@ -820,6 +827,11 @@ To definitively verify the total elimination of the blinking block cursor, an au
   - Pressed `<Break>`: The display halted immediately, printed `Break in 10`, and returned cleanly to the BASIC `Ready` prompt. The program remained in memory, and the user did not drop back to DOS.
 - **Graceful Ctrl-C Interruption:**
   - Typed `RUN` to restart the loop and pressed `Ctrl-C`: Program execution stopped instantly, returning to the BASIC `Ready` prompt with full state preserved.
+- **Stage 1 Write Protection Verification (TC-05):**
+  - Issued `SAVE "TEST/BAS:0"` from within the running BASIC environment.
+  - Monitored UART1/BoIP wire traffic: `SYS4` performed initial directory read operations on Track 17 (scanning GAT, HIT, and FXDE records for duplicate names and free directory slots).
+  - When the write operation was submitted to [`driver-FDCDVR.S`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYSRES/drivers/driver-FDCDVR.S#L222), `DOWRIT` immediately returned error 15 (`R_PROTECTED`).
+  - BASIC cleanly reported `"Disk write protected"`, zero write packets were emitted over the wire, the host `.dsk` image remained unmodified, and the session continued running without errors.
 
 ### 8.5 Disk Image & Filesystem Verification Suite
 To verify the integrity of the network boot volume and disk structures, automated Python verification tools were implemented in [`tools/`](file:///Users/richardlucente/development/git/fujinet-trs80-agon/tools):
@@ -884,7 +896,7 @@ With Phase 1 100% complete, verified, and pushed upstream:
 
 ### Phase 2 Architecture: Core Storage Driver Routing
 1. **Modular Driver Router (`driver-FDCDVR.S`):**
-   - Refactor `driver-FDCDVR.S` from a monolithic driver into a clean router dispatching logical drives `:0` through `:7` according to a unified drive-type table.
+   - Refactor `driver-FDCDVR.S` from a monolithic driver into a clean router dispatching logical drives `:0` through `:7` according to a unified drive-type table (`drv_target_table`).
 2. **Dedicated DriveWire Network Driver (`driver-DWDVR.S`):**
    - Extract the tested Phase 1 DriveWire routines into an independent driver module supporting virtual device slots 0 through 3.
 3. **Local MicroSD Hardware Driver (`driver-SDDVR.S`):**
@@ -893,3 +905,13 @@ With Phase 1 100% complete, verified, and pushed upstream:
    - Add explicit UART1 hardware configuration (IER=0, FCTL=07h, LCR=03h, MCR=03h) in `finish_init` (`SYS0_IPL`) to guarantee continuous polled streaming under all boot conditions.
 5. **Hybrid Drive Mapping:**
    - Establish initial drive mapping configurations allowing Drive `:0` to boot from FujiNet over the network while secondary drives (e.g. Drive `:1`) reside on the local Agon microSD card.
+
+### Key Architectural Decisions for Phase 2 and Beyond
+1. **Full Drive Mapping Flexibility:**
+   * Logical drives `:0` through `:7` are completely decoupled from physical hardware through `drv_target_table`.
+   * Any drive can point to any storage tier: Target 0 (Local SD via `driver-SDDVR.S`), Target 1 (FujiNet DriveWire via `driver-DWDVR.S`), or Target 2 (High SRAM `MEMDISK` via `driver-MEMDVR.S`).
+   * **Drive `:0` as Local Boot:** A local `.dsk` on the Agon microSD card can serve as Drive `:0`, enabling **Mode 2: Pure Local Boot** for 100% offline standalone operation.
+2. **Bootloader Strategy (`OSboot` vs. `FNBOOT`):**
+   * **Phases 1–3:** [`OSboot.bin`](file:///Users/richardlucente/development/git/agon-projects/OSboot/OSboot.bin) is a closed-source third-party binary utility by Shawn Sijnstra and remains completely unmodified. It serves purely to switch the VDP to terminal mode and jump to `TRSDOS.bin` at `0x000000`.
+   * **Phase 4:** The open-source native Quark MOS utility **`FNBOOT`** will replace `OSboot`, providing full visual browsing of remote TNFS shares and local SD images, and resolving FAT32 cluster LBAs in MOS.
+   * **Simplification of [`ipl-BIOS.s`](file:///Users/richardlucente/development/git/trs-os-zds/TRSDOS_7/SYS0_IPL/ipl-BIOS.s) in Phase 4:** Because `FNBOOT` stages the boot configuration mailbox (target selection and `sddvr_base_lba`) directly into SRAM before execution, `ipl-BIOS.s` will be streamlined into a lean, deterministic dispatcher, completely removing network probing loops, timeout checks, and fallback retry state machines from lowcore assembly.

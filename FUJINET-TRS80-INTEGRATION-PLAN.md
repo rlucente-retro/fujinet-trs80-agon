@@ -166,8 +166,10 @@ flowchart TD
 +-------------------------------------------------------------------------------+
 ```
 
-1. **`FNBOOT` / `OSboot`**: Agon Quark MOS bootstrap utilities. `FNBOOT` provides an interactive pre-boot visual browser to inspect FujiNet status, navigate remote TNFS archives, select local Agon SD images, configure drives `:0`–`:7`, program the ESP32 VDP with TRS-80 font/colors, load the lean `TRSDOS.bin` image, and transfer control to the OS. `OSboot` provides a fast direct-boot path.
-2. **Agon eZ80 HAL & BIOS**: The hardware abstraction layer (HAL) and BIOS for the Zilog eZ80 processor (originating from the `TRSDOS_7` port). It provides the CPU initializers, video terminal translation, interrupt tables, 60 Hz timer tasks, and virtual block storage drivers (`driver-FDCDVR.S`) that route sector requests across DriveWire (`driver-DWDVR.S`) and local SD (`driver-SDDVR.S`).
+1. **`FNBOOT` / `OSboot`**: Agon Quark MOS bootstrap utilities:
+   * **`OSboot.bin` (Baseline Loader):** Closed-source third-party utility by Shawn Sijnstra used as-is during early phases. Switches the Agon VDP to `fabgl::Terminal` mode, loads `TRSDOS.bin` to `0x000000`, and transfers execution.
+   * **`FNBOOT` (Phase 4 Native Pre-Boot Manager):** Open-source native Quark MOS utility that provides an interactive visual browser to inspect FujiNet status, navigate remote TNFS archives, select local Agon SD images, configure drives `:0`–`:7`, program the ESP32 VDP with TRS-80 font/colors, stages the boot mailbox into SRAM, and transfers control to `TRSDOS.bin`.
+2. **Agon eZ80 HAL & BIOS**: The hardware abstraction layer (HAL) and BIOS for the Zilog eZ80 processor (originating from the `TRSDOS_7` port). It provides the CPU initializers, video terminal translation, interrupt tables, 60 Hz timer tasks, and virtual block storage drivers (`driver-FDCDVR.S`) that route sector requests across DriveWire (`driver-DWDVR.S`) and local SD (`driver-SDDVR.S`). In Phase 4, with `FNBOOT` pre-staging the boot mailbox, `ipl-BIOS.s` is simplified into a lean, deterministic dispatcher without lowcore probing loops or timeout overhead.
 3. **`TRSDOS / LS-DOS 6.3.1`**: The authentic, historical disk operating system originally created by Logical Systems Inc. (LSI) as LS-DOS 6.3 and licensed by Tandy Corporation as TRSDOS 6.3.1 for the TRS-80 Model 4. It contains the system overlays (`SYS0/SYS` through `SYS6/SYS`), supervisor calls (SVCs), file management routines (`SYS4`), and the command line interpreter (`SYS6` `zCMNDI`).
 
 ### 2.2 Driver & Subsystem Disposition Matrix
@@ -651,7 +653,12 @@ Each logical drive in TRSDOS / LS-DOS is governed by a 10-byte Device Control Ta
 
 ### 6.3 Storage Driver Routing: Multi-Tier Storage Architecture
 
-The storage driver `driver-FDCDVR.S` functions as an I/O router, dispatching sector requests across three underlying storage tiers based on the drive target table:
+The storage driver `driver-FDCDVR.S` functions as an I/O router, dispatching sector requests across three underlying storage tiers based on the drive target table (`drv_target_table`). 
+
+**Universal Drive Assignment:** Every logical drive (`:0` through `:7`) is completely decoupled from physical hardware and can be independently mapped to any storage tier:
+* **Mode 1 (Pure Network Boot):** Drive `:0` (and optionally `:1`–`:7`) mapped to Target 1 (FujiNet DriveWire via `driver-DWDVR.S`).
+* **Mode 2 (Pure Local Boot):** Drive `:0` (and optionally `:1`–`:3`) mapped to Target 0 (Local MicroSD via `driver-SDDVR.S`), running 100% self-contained offline.
+* **Mode 3 (Hybrid Operation):** Dynamic cross-tier mixing (e.g., Drive `:0` Network Boot, Drive `:1` Local SD, Drive `:4` High SRAM `MEMDISK`).
 
 ```mermaid
 flowchart TD
@@ -660,9 +667,9 @@ flowchart TD
     
     FS --> Router
     
-    Router -->|"Local SD Target (Drives :0, :1)"| SD["driver-SDDVR.S (eZ80 SPI0 I/O)"]
-    Router -->|"DriveWire Target (Drives :2-6)"| DW["driver-DWDVR.S (UART1 Bus)"]
-    Router -->|"High SRAM Target (Drive :7)"| MEM["driver-MEMDVR.S (512 KB SRAM)"]
+    Router -->|"Local SD Target (Drives :0..:7)"| SD["driver-SDDVR.S (eZ80 SPI0 I/O)"]
+    Router -->|"DriveWire Target (Drives :0..:7)"| DW["driver-DWDVR.S (UART1 Bus)"]
+    Router -->|"High SRAM Target (Drives :0..:7)"| MEM["driver-MEMDVR.S (512 KB SRAM)"]
     
     SD --> Card["Agon MicroSD (Local FAT32)"]
     DW --> Net["FujiNet Hardware / Network"]
@@ -875,8 +882,9 @@ Executed from the Quark MOS `*` prompt before launching TRSDOS:
    * Full-screen interactive MOS application.
    * Scans FujiNet adapter status and enumerates TNFS host slots.
    * Browses remote TNFS directories and local Agon SD card `.dsk` files.
-   * Assigns disk images to TRSDOS Logical Drives `:0` through `:7`.
+   * Assigns disk images to TRSDOS Logical Drives `:0` through `:7` (Mode 1, Mode 2, or Mode 3).
    * Sets VDP font/colors, stages lean 64 KB `TRSDOS.bin`, remaps SRAM, and boots.
+   * **Boot Mailbox Staging & IPL Simplification:** Resolves FAT32 cluster addresses and FujiNet slot indices in Quark MOS, writing the staged boot mailbox (`drv_target_table` and `sddvr_base_lba`) directly into fixed lowcore SRAM before jumping to `TRSDOS.bin`. This allows `ipl-BIOS.s` to be simplified into a lean, deterministic dispatcher without lowcore probing loops, timeouts, or retry state machines.
 2. **`*TRSDIR <image.dsk>`:**
    * Reads Directory Cylinder (Track 17) of `<image.dsk>` on the FAT32 SD card.
    * Formats and prints file directory, extensions, sizes, and granule allocation.
@@ -1149,7 +1157,7 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-02c** | Pure Network Boot of Drive `:0`| Boot `TRSDOS.bin` with no local disk; mount `:0` on Net Slot 0. | Reads Sector 0, GAT, and `SYS0`..`SYS6` from FujiNet; prompt appears. | **PASS (Phase 1 Verified)** |
 | **TC-03** | Checksum Vectors | Compute checksum across known 256B test vectors. | Matches big-endian unsigned summation sum(b_i) % 65536 exactly. | **PASS (Phase 1 Verified)** |
 | **TC-04** | `OP_READEX` Verification | Read known sector from Drive `:0` via `0xD2` opcode. | 256 bytes read, client checksum sent, status byte `0x00` returned. | **PASS (Phase 1 Verified)** |
-| **TC-05** | Write Rejection (Stage 1) | Attempt write to network drive (`SAVE "TEST:0"`). | Immediate `R_PROTECTED` (error 15); host image remains unmodified. | **PASS (Phase 1 Verified)** |
+| **TC-05** | Write Rejection (Stage 1) | Attempt write to network drive in BASIC (`SAVE "TEST/BAS:0"`). | Track 17 read for directory/GAT search; write intercepted by `DOWRIT` with `R_PROTECTED` (error 15); displays "Disk write protected"; zero write packets on wire; host image untouched. | **PASS (Phase 1 Verified)** |
 | **TC-06** | Container Offset Verification | Read Sector 0 from raw JV1 vs DiskDISK image. | Correctly adds +0 for JV1 (LSN 0) and +1 for DiskDISK (LSN 1); returns valid GAT. | **PASS (Phase 1 Verified)** |
 | **TC-06a**| Display Loop Stability | Run tight loop `10 PRINT "Hello, world! ": 20 GOTO 10: RUN` in BASIC. | Runs continuously without freezing; interrupts stay enabled via NOP in DODVR. | **PASS (Phase 1 Verified)** |
 | **TC-06b**| Break & Ctrl-C in BASIC | Press `<Break>` or `Ctrl-C` during loop execution in BASIC. | Cleanly halts with `Break in <line>` and returns to BASIC `Ready` (no DOS abort). | **PASS (Phase 1 Verified)** |
