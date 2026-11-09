@@ -1172,9 +1172,11 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-14** | Stage 2 Multi-Drive Expansion | Mount unique disks across FujiNet slots 0–7; access Drives :0..:7 (or :1..:7 in hybrid mode). | All drives respond independently without data crosstalk or buffer pollution. | Pending Phase 7 |
 | **TC-15** | Stage 2 Writable Storage | Write 10 sectors via `SAVE`; verify on server. | Host image SHA-256 matches written data; no trailing image corruption. | Pending Phase 7 |
 | **TC-16** | RTC Normalization (`OP_TIME`) | Run system clock init via `driver-TOD.S`. | Year 126 normalized to 26; `DATE$` renders valid `MM/DD/26` date string. | Pending Phase 8 |
-| **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. | Pending Phase 2 |
+| **TC-16a**| Storage Router Dispatch (`drv_target_table`) | Run `DIR :1` with `drv_target_table + 1` = 1 (DriveWire) and active `DCT1$`. | Dispatches OP_READEX for virtual slot 1 via UART1; returns GAT error cleanly when slot is empty. | **PASS (Phase 2 Verified)** |
+| **TC-16b**| Local MicroSD Driver Init & Bounds Check | Run `DIR :1` with `drv_target_table + 1` = 0 (Local SD) and active `DCT1$`. | Hardware SPI0 initializes (`sddvr_inited == 1` at `0x00F400`); checks Base LBA and rejects cleanly with GAT error. | **PASS (Phase 2 Verified)** |
+| **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. | Pending Phase 4 (Driver Verified in Phase 2) |
 | **TC-18** | MOS File Tools Verification | In MOS, run `*TRSDIR`, `*TRSEXT`, `*TRSADD` on test image. | Files extracted and added match binary SHA-256 hashes. | Pending Phase 4 |
-| **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. | Pending Phase 2 |
+| **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. | Pending Phase 4 (Driver Verified in Phase 2) |
 | **TC-20** | Expanded RAM & `MEMDISK` | Mount RAM disk via `MEMDISK :4`; execute directory and file copy. | Sectors read/write via eZ80 24-bit LDIR in 27.7 µs; @BANK switches banks cleanly. | Pending Phase 8 |
 
 ---
