@@ -31,7 +31,7 @@ flowchart TD
    - **JV1**, **DiskDISK**, **Reed HDV**, and **Flat HDV**.
    - These formats maintain contiguous, sequential 256-byte sector payloads.
    - Any logical sector (LSN) can be accessed via simple linear arithmetic:
-     $$\text{Byte Offset} = \text{Header Offset} + (\text{LSN} \times 256)$$
+     `Byte Offset = Header Offset + (LSN * 256)`
    - Compatible with FujiNet's DriveWire block protocol without requiring complex server-side sector lookup tables.
 
 2. **Indexed / Non-Linear Sector Containers (Tier 2 - Translation Required):**
@@ -72,7 +72,7 @@ flowchart TD
   - **Write Protect Byte (`0x21FF`):** `0x00` = Read/Write, `0xFF` = Write Protected.
 * **Data Payload (`0x2200` to End of File):**
   - Contains contiguous sector data blocks corresponding 1:1 to the non-`0xFF` entries in the descriptor array.
-  - *Lookup Requirement:* To read Track $T$, Sector $S$, the reader must scan the 2,901-entry table for an entry matching $(T, S, \text{side})$. If found at descriptor index $i$, the sector's file offset is $8704 + (i \times 256)$.
+  - *Lookup Requirement:* To read Track `T`, Sector `S`, the reader must scan the 2,901-entry table for an entry matching `(T, S, side)`. If found at descriptor index `i`, the sector's file offset is `8704 + (i * 256)`.
 
 #### Detailed Anatomy of DMK:
 * **Header Structure (16 Bytes):**
@@ -107,7 +107,7 @@ The Reed HDV format is the universal standard for TRS-80 hard disk storage, util
   - **Bytes 7–255:** Reserved / zeros.
 * **Payload Structure:**
   - Standard 256-byte sectors begin immediately at byte offset 256:
-    $$\text{Byte Offset} = 256 + (\text{LSN} \times 256)$$
+    `Byte Offset = 256 + (LSN * 256)`
   - This structure matches the **DiskDISK** offset model, allowing identical handling via `dw_offset = 1`.
 
 ---
@@ -118,7 +118,7 @@ The Reed HDV format is the universal standard for TRS-80 hard disk storage, util
 1. **LS-DOS Floppy Device Control Table (DCT) Constraints:**
    - In standard LS-DOS floppy DCTs (`DCT+6`), the cylinder count is an 8-bit field (maximum 256 cylinders).
    - Single-volume capacity is limited to:
-     $$256 \text{ cylinders} \times 1 \text{ head} \times 32 \text{ sectors} \times 256 \text{ bytes} \approx 2.097 \text{ MB}$$
+     `256 cylinders * 1 head * 32 sectors * 256 bytes ≈ 2.097 MB`
      (Or ~4 MB with 2 heads).
 2. **Authentic Hard Disk Partitioning (`RSHARD6/SYS` & `XTRSHARD/DCT`):**
    - Historical Tandy external hard disks (WD1000/WD1010 at I/O ports `0xC0`–`0xC7`) split a physical 5 MB to 20 MB disk into multiple **logical partitions**.
@@ -126,7 +126,7 @@ The Reed HDV format is the universal standard for TRS-80 hard disk storage, util
    - Sector 0 of the drive (or partition table track) contains partition definitions detailing starting cylinders and lengths.
 3. **DriveWire 24-Bit Addressing Advantage:**
    - DriveWire's `OP_READEX` (`0xD2`) and `OP_WRITE` (`0x57`) use 3-byte LSN fields (`LSN_23..16`, `LSN_15..8`, `LSN_7..0`).
-   - This directly addresses up to $2^{24} \text{ sectors} = \mathbf{4\text{ Gigabytes}}$.
+   - This directly addresses up to `2^24 sectors = 4 Gigabytes`.
    - Over DriveWire, large hard disk containers can be supported through two operational models:
      - **Model A (Multi-Slot Image Mapping):** FujiNet mounts individual partition images (or floppy images) into discrete DriveWire slots (0–7).
      - **Model B (Single Large Container Partitioning):** A single 20 MB `.hdv` image is mounted into a DriveWire slot, and a dedicated TRSDOS partition driver (`driver-HDDVR.S`) translates LS-DOS partition drive letters (`:4`–`:7`) to LSN base offsets within that single container.
@@ -148,10 +148,10 @@ Update [Section 3.3](file:///Users/richardlucente/development/git/fujinet-trs80-
 2. **In Step 4 (`ipl-BIOS.s` Dynamic Network Mount):**
    - Detail the automated 4-tier probe executed by the BIOS during Drive `:0` initialization:
      - Issues `OP_READEX` for wire LSN 0.
-     - Tests for `56 CB`h (Reed HDV) $\rightarrow$ sets `dw_offset[0] = 1`, configures hard disk geometry.
-     - Tests for `'DiskDISK'` $\rightarrow$ sets `dw_offset[0] = 1`, copies 7-byte DCT block from `F9h`–`FFh`.
-     - Tests for GAT on Track 17 $\rightarrow$ sets `dw_offset[0] = 0` (flat JV1).
-     - Unrecognized or corrupted header $\rightarrow$ emits diagnostic code to VDP terminal and halts gracefully.
+     - Tests for `56 CB`h (Reed HDV) -> sets `dw_offset[0] = 1`, configures hard disk geometry.
+     - Tests for `'DiskDISK'` -> sets `dw_offset[0] = 1`, copies 7-byte DCT block from `F9h`–`FFh`.
+     - Tests for GAT on Track 17 -> sets `dw_offset[0] = 0` (flat JV1).
+     - Unrecognized or corrupted header -> emits diagnostic code to VDP terminal and halts gracefully.
 
 ---
 
@@ -228,7 +228,7 @@ uint8_t probe_container_format(uint8_t slot) {
 * **Add Section 6.3.1: Hard Disk Subsystem & Partition Driver (`driver-HDDVR.S`):**
   - Allocate logical drives `:4` through `:7` for hard disk partitions.
   - Detail partition translation:
-    $$\text{Target Wire LSN} = \text{Partition Base LSN} + \text{Volume Relative LSN} + \text{dw\_offset}[\text{slot}]$$
+    `Target Wire LSN = Partition Base LSN + Volume Relative LSN + dw_offset[slot]`
   - Maintain compatibility with authentic LS-DOS utilities like `HDSDIR` and `FMT`.
 
 #### Section 7 (Native TRSDOS & Quark MOS Utilities):

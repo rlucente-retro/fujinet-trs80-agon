@@ -304,9 +304,9 @@ Standard SD and SDHC cards operate strictly with **512-byte physical blocks**. C
 To bridge this disparity without requiring an external translation layer:
 1. Each 512-byte SD block accommodates exactly **two** 256-byte TRSDOS sectors.
 2. The physical block LBA on the SD card is computed as:
-   $$\text{Block LBA} = \text{BaseLBA} + \left\lfloor \frac{\text{LSN}}{2} \right\rfloor$$
+   `Block LBA = BaseLBA + (LSN / 2)`
 3. The sub-sector selector indicates which half of the 512-byte physical block contains the requested TRSDOS sector:
-   $$\text{Sub-sector} = \text{LSN} \ \& \ 1 \quad (0 = \text{lower 256 bytes}, \ 1 = \text{upper 256 bytes})$$
+   `Sub-sector = LSN & 1` (0 = lower 256 bytes, 1 = upper 256 bytes)
 
 ```assembly
 		; Calculate SD Block LBA = BaseLBA + (LSN / 2)
@@ -354,7 +354,7 @@ When a sector read is requested:
 
 ### 5.1 Linker Constraints in Low Memory (`$$$org02E94663`)
 In ZDS II, the low operating system driver segment `$$$org02E94663` begins at `0x000E01` (immediately following system vectors). The segment must terminate **strictly below `0x001300`** (the base of the next fixed system section). This leaves an absolute ceiling of:
-$$0x001300 - 0x000E01 = 1,279 \text{ bytes}$$
+`0x001300 - 0x000E01 = 1,279 bytes`
 
 During initial assembly of Phase 2, combining `driver-FDCDVR.S`, the new `drv_target_table`, and `driver-DWDVR.s` caused the section to swell:
 - Total size reached `0x001316` (23 bytes past `0x001300`).
@@ -455,7 +455,8 @@ FOR I=0 TO 9: POKE &H047A+I, PEEK(&H0470+I): NEXT
 
 ### 7.2 Detailed Analysis: Why "GAT read error" Confirmed Success
 When executing `DIR :1`, the LS-DOS `DIR` command starts by requesting Cylinder 17, Sector 0 (the Granule Allocation Table). If the driver returns any error on this sector:
-$$\text{Read Failure on Cyl 17, Sec 0} \longrightarrow \mathbf{\text{"GAT read error"}}$$
+
+`Read Failure on Cyl 17, Sec 0 -> "GAT read error"`
 
 1. **Under Test 2.1 (DriveWire Target):**
    - Router dispatched to `rd_drivewire` with Drive 1.
