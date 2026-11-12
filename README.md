@@ -190,6 +190,8 @@ The repository includes a standalone Python diagnostic and verification suite fo
 * **[`tools/audit_filesystem.py`](tools/audit_filesystem.py):** Comprehensive filesystem auditor that parses the Track 17 Directory Cylinder, validates Granule Allocation Tables (GAT), Hash Index Tables (HIT), and File Extended Directory Entries (FXDE), and reports disk geometry and file extents.
 * **[`tools/verify_disk_image.py`](tools/verify_disk_image.py):** Validates raw JV1 and Misosys DiskDISK container structures, confirming physical-to-logical sector mappings, authentic DCT headers, and checksum validity.
 * **[`tools/verify_all_files.py`](tools/verify_all_files.py):** Traverses all directory entries on a disk image to verify end-of-file (EOF) bounds, sector allocations, and directory record integrity.
+* **[`tools/bin_to_cmd.py`](tools/bin_to_cmd.py):** Authentic TRSDOS / LS-DOS 6.x executable command packager converting flat binary outputs into Load Module Format (`/CMD`) with Record Type 01 (load blocks up to 256 bytes) and Record Type 02 (execution entry points).
+* **[`tools/test_bin_to_cmd.py`](tools/test_bin_to_cmd.py):** Unit test and round-trip verification suite for `bin_to_cmd.py`.
 
 ---
 
