@@ -10,8 +10,21 @@ Tests authentic TRSDOS / LS-DOS 6.x load module packaging against:
   5. Dump parsing and round-trip payload fidelity.
 """
 
+import os
+import sys
 import unittest
-from tools.bin_to_cmd import pack_bin_to_cmd, unpack_cmd, parse_address
+
+# Ensure both repository root and tools directory are in sys.path
+_tools_dir = os.path.dirname(os.path.abspath(__file__))
+_repo_root = os.path.dirname(_tools_dir)
+for _p in (_repo_root, _tools_dir):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    from tools.bin_to_cmd import pack_bin_to_cmd, unpack_cmd, parse_address
+except ModuleNotFoundError:
+    from bin_to_cmd import pack_bin_to_cmd, unpack_cmd, parse_address
 
 
 class TestBinToCmd(unittest.TestCase):
