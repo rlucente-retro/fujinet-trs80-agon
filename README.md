@@ -180,6 +180,7 @@ Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
 | `FNMNTIMG` | `FNMNTIMG <slot> [mode]` | Mounts the disk image for active I/O and synchronizes guest DCT geometry. |
 | `DRVMAP` | `DRVMAP` | Displays unified drive mapping across all 8 logical drives (Local SD vs FujiNet). |
 | `SDMOUNT` | `SDMOUNT <drv> "<path>"` | Mounts or swaps a local Agon SD card `.dsk` image into a logical drive. |
+| `HELLO` | `HELLO` | Minimal proof-of-concept test utility validating the load module pipeline. |
 
 ---
 
