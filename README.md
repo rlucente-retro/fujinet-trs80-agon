@@ -183,6 +183,16 @@ Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
 
 ---
 
+## Shared Assembly Includes (`include/`)
+
+Standardized include files for developing authentic LS-DOS 6.x `.CMD` command utilities and drivers on the Olimex Agon Light 2:
+
+* **[`include/svc.inc`](include/svc.inc):** TRSDOS 6.3 / LS-DOS 6.3 Supervisor Call (SVC) equates (`SVC_IPL` through `SVC_CKBRKC`) and dual-syntax invocation macros (`_DSPLY` / `zDSPLY`, `_KEY` / `zKEY`, `_EXIT` / `zEXIT`, `_ABORT`, `_ERROR`, `_PARAM`, `_FSPEC`, `_BANK`, `_CLS`, etc.) supporting ZDS II and AgonDev assemblers.
+* **[`include/equ.inc`](include/equ.inc):** Lowcore memory map addresses (`INBUF$`, `DCT0$`–`DCT7$`, `LDRV$`, `TIME$`, `DATE$`, `BUR$`, `BAR$`, `LBANK$`), Agon storage router dispatch table (`drv_target_table`, `sddvr_base_lba`), ASCII control codes, standard LS-DOS error codes (`LSERR_NONE` through `LSERR_SVC`), and eZ80 UART1 hardware registers.
+* **[`include/fujinet.inc`](include/fujinet.inc):** DriveWire and FujiNet bus protocol opcodes (`OP_FUJI`, `OP_READEX`, `OP_WRITE`, `OP_TIME`), transaction commands (`FUJI_CMD_POLL`, `FUJI_CMD_GET_ADAPTER_CFG`, `FUJI_CMD_GET_DEV_SLOTS`, `FUJI_CMD_GET_HOST_SLOTS`, `FUJI_CMD_MOUNT_IMAGE`, etc.), data structure field offsets (140-byte `AdapterConfig`, 256-byte Host Slot table, 38-byte Device Slot entries), and transaction status codes (`FUJI_STAT_OK = 0x01`).
+
+---
+
 ## Development & Verification Tools (`tools/`)
 
 The repository includes a standalone Python diagnostic and verification suite for testing and inspecting TRSDOS/LS-DOS disk images and network booting:
@@ -192,6 +202,7 @@ The repository includes a standalone Python diagnostic and verification suite fo
 * **[`tools/verify_all_files.py`](tools/verify_all_files.py):** Traverses all directory entries on a disk image to verify end-of-file (EOF) bounds, sector allocations, and directory record integrity.
 * **[`tools/bin_to_cmd.py`](tools/bin_to_cmd.py):** Authentic TRSDOS / LS-DOS 6.x executable command packager converting flat binary outputs into Load Module Format (`/CMD`) with Record Type 01 (load blocks up to 256 bytes) and Record Type 02 (execution entry points).
 * **[`tools/test_bin_to_cmd.py`](tools/test_bin_to_cmd.py):** Unit test and round-trip verification suite for `bin_to_cmd.py`.
+* **[`tools/test_includes.py`](tools/test_includes.py):** Parser and consistency test suite validating all equates, memory addresses, and data structures across `svc.inc`, `equ.inc`, and `fujinet.inc`.
 
 ---
 
