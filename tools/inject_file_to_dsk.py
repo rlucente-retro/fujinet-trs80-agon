@@ -85,6 +85,17 @@ def inject_file(dsk_path: str, host_file: str, trs_name: str, trs_ext: str = "CM
     if existing_dec:
         dec, dir_wire_sec, dir_entry_off = existing_dec
         print(f"[+] Overwriting existing file '{target_name8.strip()}.{target_ext3.strip()}' at DEC 0x{dec:02X}")
+        old_fpde = disk_data[dir_entry_off : dir_entry_off + 32]
+        # Free previously allocated granules in GAT
+        for e in range(5):
+            old_cyl = old_fpde[22 + e * 2]
+            if old_cyl == 0xFF:
+                break
+            old_gran_start = old_fpde[23 + e * 2] >> 5
+            old_gran_cnt = (old_fpde[23 + e * 2] & 0x1F) + 1
+            for g in range(old_gran_cnt):
+                gat[old_cyl] &= ~(1 << (old_gran_start + g))
+        disk_data[gat_offset : gat_offset + 256] = gat
     else:
         assert free_dec is not None, "Disk directory is full (256 entries)"
         dec, dir_wire_sec, dir_entry_off = free_dec

@@ -1091,10 +1091,13 @@ STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:3 / Slots
                                         |
                                         v
 +-------------------------------------------------------------------------------+
-| PHASE 3: Build Pipeline & Authentic CMD Packager                              |
-| - Build and verify lean TRSDOS.bin via Wine/ZDS II and native AgonDev.        |
+| PHASE 3: Build Pipeline & Authentic CMD Packager [COMPLETED & QUALIFIED]      |
 | - Build bin_to_cmd.py packager emitting authentic Record Type 01/02 formats.  |
-| - Establish automated Makefile targets for OS image and utility binaries.     |
+| - Implement shared TRSDOS assembly headers (svc.inc, equ.inc, fujinet.inc).   |
+| - Implement proof-of-concept command utility HELLO.S (Z80 mode origin 0x2600).|
+| - Implement DiskDISK injector tools/inject_file_to_dsk.py with HIT/GAT sync.  |
+| - Establish automated Makefile targets for utilities, test, inject, and audit.|
+| - Qualify authentic .CMD execution (HELLO.CMD) live in Agon emulator.        |
 +-------------------------------------------------------------------------------+
                                         |
                                         v
@@ -1168,6 +1171,7 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-10** | Path Quoting Case Preservation | Run `FNSETDEV 0 0 1 "/disks/trs80/game.dsk"`. | Server mounts exact path without uppercase conversion (`/disks/...`, not `/DISKS/...`). | Pending Phase 4 |
 | **TC-11** | Live DCT Geometry Synchronization | Run `FNMNTIMG 1 1` on unmounted Drive `:1`. | Sector 0 read; DCT geometry populated; byte 0 changed to `0xC3`; `DIR :1` succeeds. | Pending Phase 4 |
 | **TC-12** | Directory & File Execution | Run `DIR :0` and load executable (`RUN "TEST/CMD:0"`). | Directory displays files; executable loads and runs cleanly. | **PASS (Phase 1 Verified)** |
+| **TC-12a**| Authentic CMD Packaging & Execution | Build `HELLO.S`, package via `bin_to_cmd.py`, inject into `boot_volume.dsk`, execute `HELLO` from LS-DOS prompt. | Load module parsed via `@LOAD`; executes at `0x2600`; clears screen via `@CLS`; prints banner via `@DSPLY`; exits cleanly via `@EXIT` to LS-DOS prompt. | **PASS (Phase 3 Verified)** |
 | **TC-13** | Timer 1 Clock Stability | Perform multi-sector file load (>= 64 sectors). | System time-of-day clock does not drift by > 1 tick during transfer. | Pending Phase 5 |
 | **TC-14** | Stage 2 Multi-Drive Expansion | Mount unique disks across FujiNet slots 0–7; access Drives :0..:7 (or :1..:7 in hybrid mode). | All drives respond independently without data crosstalk or buffer pollution. | Pending Phase 7 |
 | **TC-15** | Stage 2 Writable Storage | Write 10 sectors via `SAVE`; verify on server. | Host image SHA-256 matches written data; no trailing image corruption. | Pending Phase 7 |

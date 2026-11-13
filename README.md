@@ -46,6 +46,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 
 * **Phase 1 Implementation & Technical Explanation:** [`PHASE1-IMPLEMENTATION-EXPLANATION.md`](PHASE1-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 1 deliverables, including lean kernel architecture (~64 KB), DriveWire `OP_READEX` network IPL, VDP cursor suppression, display loop hang resolution, and authentic Model 4 Break & Ctrl-C handling.
 * **Phase 2 Implementation & Technical Explanation:** [`PHASE2-IMPLEMENTATION-EXPLANATION.md`](PHASE2-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 2 deliverables, including the multi-tier storage router in `driver-FDCDVR.S`, modular DriveWire driver `driver-DWDVR.s`, local microSD SPI0 block driver `driver-SDDVR.s`, memory map budgeting, and empirical verification.
+* **Phase 3 Implementation & Technical Explanation:** [`PHASE3-IMPLEMENTATION-EXPLANATION.md`](PHASE3-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 3 deliverables, including the authentic LS-DOS `.CMD` packager (`tools/bin_to_cmd.py`), shared assembly includes and equates (`include/`), minimal test harness (`HELLO.S`), disk injection tool (`tools/inject_file_to_dsk.py`), automated `Makefile` pipeline, and live emulation qualification.
 * **Comprehensive Architectural & Integration Specification:** [`FUJINET-TRS80-INTEGRATION-PLAN.md`](FUJINET-TRS80-INTEGRATION-PLAN.md) — Authoritative technical specification covering the three-layer execution model, boot chain, wire protocols, assembly driver modifications, local SD card block drivers, the native TRSDOS/MOS utility suites, hardware constraints, and phased implementation milestones.
 * **Disk & Hard Drive Image Format Analysis:** [`DISK-IMAGE-FORMAT-ANALYSIS.md`](DISK-IMAGE-FORMAT-ANALYSIS.md) — Binary format specifications and addressing mechanics for JV1, DiskDISK, JV3, DMK, and Reed HDV images, detailing DriveWire compatibility and geometry extraction.
 * **Agon OSboot Bootstrap Loader:** [Shawn Sijnstra's OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) — MOS bootstrap utility for booting `TRSDOS.bin` while preserving UART1 streaming connections.
@@ -202,8 +203,31 @@ The repository includes a standalone Python diagnostic and verification suite fo
 * **[`tools/verify_disk_image.py`](tools/verify_disk_image.py):** Validates raw JV1 and Misosys DiskDISK container structures, confirming physical-to-logical sector mappings, authentic DCT headers, and checksum validity.
 * **[`tools/verify_all_files.py`](tools/verify_all_files.py):** Traverses all directory entries on a disk image to verify end-of-file (EOF) bounds, sector allocations, and directory record integrity.
 * **[`tools/bin_to_cmd.py`](tools/bin_to_cmd.py):** Authentic TRSDOS / LS-DOS 6.x executable command packager converting flat binary outputs into Load Module Format (`/CMD`) with Record Type 01 (load blocks up to 256 bytes) and Record Type 02 (execution entry points).
+* **[`tools/inject_file_to_dsk.py`](tools/inject_file_to_dsk.py):** Injects host executable binaries into LS-DOS 6.x DiskDISK images, computing authentic HIT hashes, allocating granules from the GAT, freeing prior extents upon overwrite, and constructing 32-byte FPDE directory entries.
 * **[`tools/test_bin_to_cmd.py`](tools/test_bin_to_cmd.py):** Unit test and round-trip verification suite for `bin_to_cmd.py`.
 * **[`tools/test_includes.py`](tools/test_includes.py):** Parser and consistency test suite validating all equates, memory addresses, and data structures across `svc.inc`, `equ.inc`, and `fujinet.inc`.
+
+---
+
+## Build System & Toolchain Automation (`Makefile`)
+
+The repository provides an automated build system for assembling, linking, packaging, and deploying TRSDOS / LS-DOS 6.x load modules (`.CMD`) into virtual disk images:
+
+* **Prerequisites:**
+  * Apple Game Porting Toolkit `wine64` or `wine`
+  * Zilog ZDS II eZ80Acclaim! 5.3.5 compiler/assembler suite installed in Wine (`~/.wine/drive_c/Zilog/ZDSII_eZ80Acclaim!_5.3.5`)
+  * `hex2bin` (via Homebrew: `brew install hex2bin`)
+  * Python 3.8+
+
+* **Available Targets:**
+  * `make all` (default): Verifies toolchain environment and builds all command utilities under `src/`.
+  * `make utils`: Assembles (`ez80asm.exe`), links (`eZ80link.exe`), converts to binary (`hex2bin`), and packages all `src/*/*.S` utilities into authentic LS-DOS `/CMD` load modules via `tools/bin_to_cmd.py`.
+  * `make test`: Executes all unit test suites (`tools/test_bin_to_cmd.py` and `tools/test_includes.py`).
+  * `make inject [DSK=/path/to/image.dsk]`: Automatically injects all built `.CMD` utilities into the specified target disk image and performs a full structural audit.
+  * `make audit-dsk [DSK=/path/to/image.dsk]`: Runs the exhaustive filesystem integrity auditor (`tools/audit_filesystem.py`) against the target disk image.
+  * `make check-env`: Validates that `wine64`, `hex2bin`, `ez80asm.exe`, and `python3` are correctly installed and discoverable.
+  * `make clean`: Removes intermediate assembly and linker artifacts (`*.obj`, `*.lst`, `*.hex`, `*.bin`, `*.map`).
+  * `make clean-all`: Cleans all intermediate artifacts plus generated `.CMD` executables.
 
 ---
 
