@@ -131,6 +131,36 @@ class TestAssemblyIncludes(unittest.TestCase):
         self.assertEqual(equates.get("FUJI_STAT_OK"), 0x01)
         self.assertEqual(equates.get("FUJI_STAT_ERROR"), 0x90)
 
+    def test_fuji_lib_inc_exists_and_contains_symbols(self):
+        lib_path = os.path.join(INCLUDE_DIR, "fuji_lib.inc")
+        self.assertTrue(os.path.isfile(lib_path), "include/fuji_lib.inc must exist")
+        with open(lib_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        expected_symbols = [
+            "fuji_init:",
+            "fuji_flush:",
+            "fuji_poll:",
+            "fuji_tx_byte:",
+            "fuji_tx_bytes:",
+            "fuji_rx_byte:",
+            "fuji_rx_bytes:",
+            "fuji_cmd:",
+            "fuji_cmd_params:",
+            "fuji_get_error:",
+            "fuji_get_response:",
+            "fuji_putc:",
+            "fuji_newline:",
+            "fuji_print_str:",
+            "fuji_print_dec8:",
+            "fuji_print_hex8:",
+            "fuji_print_ipv4:",
+            "fuji_print_mac:",
+            "fuji_print_error:",
+        ]
+        for sym in expected_symbols:
+            self.assertIn(sym, content, f"include/fuji_lib.inc must define {sym}")
+
 
 if __name__ == "__main__":
     unittest.main()
