@@ -562,6 +562,149 @@ fpe_hwto:
     pop     af
     ret
 
+; ------------------------------------------------------------------------------
+; fuji_skip_cmd - Skip command word and advance HL to first argument in INBUF$
+; Entry: HL = pointer to start of command line (typically INBUF$)
+; Exit:  HL = pointer to first non-space argument char, or CR/0 if none
+; Preserves: AF, BC, DE
+; ------------------------------------------------------------------------------
+fuji_skip_cmd:
+    push    af
+fsc_loop1:
+    ld      a, (hl)
+    cp      CR                  ; 0x0D
+    jr      z, fsc_done
+    or      a                   ; Null terminator
+    jr      z, fsc_done
+    cp      CHR_SP              ; 0x20
+    jr      z, fsc_spaces
+    cp      09h                 ; Tab
+    jr      z, fsc_spaces
+    inc     hl
+    jr      fsc_loop1
+
+fsc_spaces:
+    inc     hl
+    ld      a, (hl)
+    cp      CHR_SP
+    jr      z, fsc_spaces
+    cp      09h
+    jr      z, fsc_spaces
+
+fsc_done:
+    pop     af
+    ret
+
+; ------------------------------------------------------------------------------
+; fuji_parse_arg - Parse next token from HL into buffer DE (quoted or unquoted)
+; Entry: HL = command line pointer, DE = destination buffer pointer
+; Exit:  Carry clear (NC) = token extracted (null-terminated in DE)
+;        Carry set (C) = no argument found (end of line)
+;        HL = advanced past argument
+; Preserves: BC
+; ------------------------------------------------------------------------------
+fuji_parse_arg:
+    push    bc
+fpa_skip_sp:
+    ld      a, (hl)
+    cp      CR
+    jr      z, fpa_none
+    or      a
+    jr      z, fpa_none
+    cp      CHR_SP
+    jr      z, fpa_next_sp
+    cp      09h
+    jr      nz, fpa_check_quote
+fpa_next_sp:
+    inc     hl
+    jr      fpa_skip_sp
+
+fpa_none:
+    pop     bc
+    scf                         ; Carry set: no token
+    ret
+
+fpa_check_quote:
+    cp      '"'                 ; Double quote?
+    jr      z, fpa_quoted
+
+    ; Unquoted token: read until space, tab, CR, or null
+fpa_unq_loop:
+    ld      a, (hl)
+    cp      CR
+    jr      z, fpa_unq_done
+    or      a
+    jr      z, fpa_unq_done
+    cp      CHR_SP
+    jr      z, fpa_unq_done
+    cp      09h
+    jr      z, fpa_unq_done
+    ld      (de), a
+    inc     hl
+    inc     de
+    jr      fpa_unq_loop
+
+fpa_unq_done:
+    xor     a
+    ld      (de), a             ; Null terminate
+    pop     bc
+    or      a                   ; Clear Carry
+    ret
+
+    ; Quoted token: read until matching quote, CR, or null
+fpa_quoted:
+    inc     hl                  ; Skip opening quote
+fpa_q_loop:
+    ld      a, (hl)
+    cp      CR
+    jr      z, fpa_q_done
+    or      a
+    jr      z, fpa_q_done
+    cp      '"'                 ; Closing quote?
+    jr      z, fpa_q_close
+    ld      (de), a
+    inc     hl
+    inc     de
+    jr      fpa_q_loop
+
+fpa_q_close:
+    inc     hl                  ; Skip closing quote
+fpa_q_done:
+    xor     a
+    ld      (de), a             ; Null terminate
+    pop     bc
+    or      a                   ; Clear Carry
+    ret
+
+; ------------------------------------------------------------------------------
+; fuji_parse_slot - Convert 1-digit ASCII string at DE to integer 0..7
+; Entry: DE = pointer to null-terminated argument string
+; Exit:  Carry clear (NC) = valid, A = slot number (0..7)
+;        Carry set (C) = invalid slot specification
+; Preserves: BC, DE, HL
+; ------------------------------------------------------------------------------
+fuji_parse_slot:
+    push    hl
+    ld      a, (de)
+    sub     '0'
+    jr      c, fps_inv          ; < '0'
+    cp      8                   ; >= 8?
+    jr      nc, fps_inv
+    inc     de
+    ld      h, a                ; Save slot
+    ld      a, (de)
+    dec     de
+    or      a
+    jr      nz, fps_inv
+    ld      a, h                ; Restore slot
+    pop     hl
+    or      a                   ; Clear Carry
+    ret
+fps_inv:
+    pop     hl
+    scf                         ; Set Carry
+    ret
+
 msg_err_gen:    DB "FujiNet error: General command failure", CR
 msg_err_fnf:    DB "FujiNet error: Host or file not found", CR
 msg_err_bdev:   DB "FujiNet error: Invalid device slot", CR

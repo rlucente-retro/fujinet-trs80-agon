@@ -157,6 +157,9 @@ class TestAssemblyIncludes(unittest.TestCase):
             "fuji_print_ipv4:",
             "fuji_print_mac:",
             "fuji_print_error:",
+            "fuji_skip_cmd:",
+            "fuji_parse_arg:",
+            "fuji_parse_slot:",
         ]
         for sym in expected_symbols:
             self.assertIn(sym, content, f"include/fuji_lib.inc must define {sym}")
