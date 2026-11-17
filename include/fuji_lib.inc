@@ -563,13 +563,44 @@ fpe_hwto:
     ret
 
 ; ------------------------------------------------------------------------------
-; fuji_skip_cmd - Skip command word and advance HL to first argument in INBUF$
-; Entry: HL = pointer to start of command line (typically INBUF$)
+; fuji_skip_cmd - Advance HL to first argument in command line buffer
+; If HL already points to arguments (e.g. passed in HL by LS-DOS), preserves it.
+; If HL points to the command name, skips the command word and trailing spaces.
+; Entry: HL = command line pointer (typically entry HL, or INBUF$)
 ; Exit:  HL = pointer to first non-space argument char, or CR/0 if none
 ; Preserves: AF, BC, DE
 ; ------------------------------------------------------------------------------
 fuji_skip_cmd:
     push    af
+fsc_lead_sp:
+    ld      a, (hl)
+    cp      CHR_SP
+    jr      z, fsc_next_lead
+    cp      09h                 ; Tab
+    jr      z, fsc_next_lead
+    cp      ','
+    jr      z, fsc_next_lead
+    jr      fsc_chk_cmd
+fsc_next_lead:
+    inc     hl
+    jr      fsc_lead_sp
+
+fsc_chk_cmd:
+    cp      CR
+    jr      z, fsc_done
+    or      a
+    jr      z, fsc_done
+    cp      '"'
+    jr      z, fsc_done         ; Argument: double-quoted string
+    cp      27h                 ; Single quote (0x27)
+    jr      z, fsc_done         ; Argument: single-quoted string
+    cp      '0'
+    jr      c, fsc_is_cmd
+    cp      3Ah                 ; '9' + 1
+    jr      c, fsc_done         ; Argument: numeric digit (slot 0-7)
+
+fsc_is_cmd:
+    ; HL points to a command name (letters)
 fsc_loop1:
     ld      a, (hl)
     cp      CR                  ; 0x0D
@@ -579,6 +610,8 @@ fsc_loop1:
     cp      CHR_SP              ; 0x20
     jr      z, fsc_spaces
     cp      09h                 ; Tab
+    jr      z, fsc_spaces
+    cp      ','
     jr      z, fsc_spaces
     inc     hl
     jr      fsc_loop1
@@ -590,6 +623,8 @@ fsc_spaces:
     jr      z, fsc_spaces
     cp      09h
     jr      z, fsc_spaces
+    cp      ','
+    jr      z, fsc_spaces
 
 fsc_done:
     pop     af
@@ -597,6 +632,8 @@ fsc_done:
 
 ; ------------------------------------------------------------------------------
 ; fuji_parse_arg - Parse next token from HL into buffer DE (quoted or unquoted)
+; Handles both double-quoted ("..."), single-quoted ('...'), and unquoted tokens.
+; Delimiters between unquoted tokens: space, tab, comma, CR, null.
 ; Entry: HL = command line pointer, DE = destination buffer pointer
 ; Exit:  Carry clear (NC) = token extracted (null-terminated in DE)
 ;        Carry set (C) = no argument found (end of line)
@@ -614,7 +651,10 @@ fpa_skip_sp:
     cp      CHR_SP
     jr      z, fpa_next_sp
     cp      09h
-    jr      nz, fpa_check_quote
+    jr      z, fpa_next_sp
+    cp      ','
+    jr      z, fpa_next_sp
+    jr      fpa_check_quote
 fpa_next_sp:
     inc     hl
     jr      fpa_skip_sp
@@ -627,8 +667,10 @@ fpa_none:
 fpa_check_quote:
     cp      '"'                 ; Double quote?
     jr      z, fpa_quoted
+    cp      27h                 ; Single quote (0x27)?
+    jr      z, fpa_quoted
 
-    ; Unquoted token: read until space, tab, CR, or null
+    ; Unquoted token: read until space, tab, comma, CR, or null
 fpa_unq_loop:
     ld      a, (hl)
     cp      CR
@@ -638,6 +680,8 @@ fpa_unq_loop:
     cp      CHR_SP
     jr      z, fpa_unq_done
     cp      09h
+    jr      z, fpa_unq_done
+    cp      ','
     jr      z, fpa_unq_done
     ld      (de), a
     inc     hl
@@ -651,8 +695,9 @@ fpa_unq_done:
     or      a                   ; Clear Carry
     ret
 
-    ; Quoted token: read until matching quote, CR, or null
+    ; Quoted token: read until matching quote (saved in C), CR, or null
 fpa_quoted:
+    ld      c, a                ; C = opening quote character
     inc     hl                  ; Skip opening quote
 fpa_q_loop:
     ld      a, (hl)
@@ -660,7 +705,7 @@ fpa_q_loop:
     jr      z, fpa_q_done
     or      a
     jr      z, fpa_q_done
-    cp      '"'                 ; Closing quote?
+    cp      c                   ; Matching closing quote?
     jr      z, fpa_q_close
     ld      (de), a
     inc     hl

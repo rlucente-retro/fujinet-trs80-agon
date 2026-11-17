@@ -14,16 +14,22 @@
     ORG     USER_PROG_BASE      ; 2600h
 
 start:
-    ; 1. Parse <slot> from command line buffer INBUF$
+    ; Check if command tail was passed in HL (standard LS-DOS .CMD entry)
+    ld      a, h
+    or      l
+    jr      nz, seth_hl_ok
     ld      hl, INBUF$
+seth_hl_ok:
     call    fuji_skip_cmd
+
+    ; 1. Parse <slot> from command line
     ld      de, arg_slot
     call    fuji_parse_arg
     jr      c, seth_usage
 
     ld      de, arg_slot
     call    fuji_parse_slot
-    jr      c, seth_usage
+    jr      c, seth_bad_slot
     ld      (target_slot), a
 
     ; 2. Parse "<hostname>" argument (quotes preserve case)
@@ -136,6 +142,11 @@ seth_usage:
     _DSPLY
     _EXIT
 
+seth_bad_slot:
+    ld      hl, msg_bad_slot
+    _DSPLY
+    _EXIT
+
 seth_comm_err:
     ld      a, 0FFh
     call    fuji_print_error
@@ -149,6 +160,7 @@ seth_err:
 ; Display Labels & Formatting Strings
 ; -----------------------------------------------------------------------------
 msg_usage:      DB  "Usage: FNSETH <slot 0-7> \"<hostname>\"", CR
+msg_bad_slot:   DB  "Error: Slot must be 0 to 7", CR
 msg_too_long:   DB  "Error: Hostname exceeds 31 characters", CR
 msg_pfx:        DB  "Host Slot ", 03h
 msg_sep:        DB  " updated: ", 03h

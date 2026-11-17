@@ -14,8 +14,12 @@
     ORG     USER_PROG_BASE      ; 2600h
 
 start:
-    ; Parse <slot> from command line buffer INBUF$
+    ; Check if command tail was passed in HL (standard LS-DOS .CMD entry)
+    ld      a, h
+    or      l
+    jr      nz, mnt_hl_ok
     ld      hl, INBUF$
+mnt_hl_ok:
     call    fuji_skip_cmd
     ld      de, arg_slot
     call    fuji_parse_arg
@@ -23,7 +27,7 @@ start:
 
     ld      de, arg_slot
     call    fuji_parse_slot
-    jr      c, mnt_usage
+    jr      c, mnt_bad_slot
     ld      (mount_slot), a
 
     ; Initialize UART1 and flush receiver
@@ -54,6 +58,11 @@ mnt_usage:
     _DSPLY
     _EXIT
 
+mnt_bad_slot:
+    ld      hl, msg_bad_slot
+    _DSPLY
+    _EXIT
+
 mnt_comm_err:
     ld      a, 0FFh
     call    fuji_print_error
@@ -67,6 +76,7 @@ mnt_err:
 ; Display Labels & Formatting Strings
 ; -----------------------------------------------------------------------------
 msg_usage:  DB  "Usage: FNMOUNT <slot 0-7>", CR
+msg_bad_slot: DB "Error: Slot must be 0 to 7", CR
 msg_pfx:    DB  "Host Slot ", 03h
 msg_sfx:    DB  " mounted successfully.", CR
 
