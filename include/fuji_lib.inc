@@ -502,7 +502,7 @@ fp_mac_done:
 ; ------------------------------------------------------------------------------
 fuji_print_error:
     push    af
-    push    de
+    push    hl
     cp      FUJI_STAT_ERROR         ; 90h
     jr      z, fpe_gen
     cp      FUJI_STAT_NOT_FOUND     ; 91h
@@ -515,50 +515,50 @@ fuji_print_error:
     jr      z, fpe_hwto
 
     ; Unknown error code - display header and numeric hex value
-    ld      de, msg_err_unk
+    ld      hl, msg_err_unk
     _DSPLY
-    pop     de
+    pop     hl
     pop     af
     push    af
-    push    de
+    push    hl
     call    fuji_print_hex8
     call    fuji_newline
-    pop     de
+    pop     hl
     pop     af
     ret
 
 fpe_gen:
-    ld      de, msg_err_gen
+    ld      hl, msg_err_gen
     _DSPLY
-    pop     de
+    pop     hl
     pop     af
     ret
 
 fpe_fnf:
-    ld      de, msg_err_fnf
+    ld      hl, msg_err_fnf
     _DSPLY
-    pop     de
+    pop     hl
     pop     af
     ret
 
 fpe_bdev:
-    ld      de, msg_err_bdev
+    ld      hl, msg_err_bdev
     _DSPLY
-    pop     de
+    pop     hl
     pop     af
     ret
 
 fpe_netto:
-    ld      de, msg_err_netto
+    ld      hl, msg_err_netto
     _DSPLY
-    pop     de
+    pop     hl
     pop     af
     ret
 
 fpe_hwto:
-    ld      de, msg_err_hwto
+    ld      hl, msg_err_hwto
     _DSPLY
-    pop     de
+    pop     hl
     pop     af
     ret
 
