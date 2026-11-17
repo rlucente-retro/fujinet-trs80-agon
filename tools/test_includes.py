@@ -86,6 +86,7 @@ class TestAssemblyIncludes(unittest.TestCase):
 
         # Verify storage router addresses
         self.assertEqual(equates.get("drv_target_table"), 0x0E76)
+        self.assertEqual(equates.get("dw_offset"), 0x0F78)
         self.assertEqual(equates.get("DRV_TARGET_SD"), 0)
         self.assertEqual(equates.get("DRV_TARGET_DW"), 1)
         self.assertEqual(equates.get("DRV_TARGET_MEMDISK"), 2)

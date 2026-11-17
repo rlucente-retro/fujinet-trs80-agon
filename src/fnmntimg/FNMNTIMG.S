@@ -68,11 +68,105 @@ mntimg_do_mount:
     jr      c, mntimg_err
 
     ; -------------------------------------------------------------------------
-    ; Live Operating System Integration:
-    ; 1. Set drv_target_table entry to DRV_TARGET_DW (1)
-    ; 2. Synchronize target DCTn$ from DCT0$ template
-    ; 3. Activate drive vector with opcode 0xC3 (JP FDCDVR)
+    ; Probe Sector 0 of mounted image over DriveWire via OP_READEX (0xD2)
+    ; to detect container header: DiskDISK (offset 1) vs raw JV1 (offset 0)
     ; -------------------------------------------------------------------------
+    ld      a, OP_READEX
+    ld      (sec0_req+0), a
+    ld      a, (target_slot)
+    ld      (sec0_req+1), a
+    xor     a
+    ld      (sec0_req+2), a
+    ld      (sec0_req+3), a
+    ld      (sec0_req+4), a
+
+    call    fuji_flush
+    ld      hl, sec0_req
+    ld      bc, 5
+    call    fuji_tx_bytes
+    jr      c, mntimg_probe_fail
+
+    ld      hl, sec0_buf
+    ld      bc, 256
+    call    fuji_rx_bytes
+    jr      c, mntimg_probe_fail
+
+    ; Calculate 16-bit big-endian unsigned checksum
+    ld      hl, sec0_buf
+    ld      bc, 256
+    ld      de, 0               ; DE = checksum accumulator
+sec0_chk_loop:
+    ld      a, (hl)
+    inc     hl
+    add     a, e
+    ld      e, a
+    jr      nc, sec0_chk_nc
+    inc     d
+sec0_chk_nc:
+    dec     bc
+    ld      a, b
+    or      c
+    jr      nz, sec0_chk_loop
+
+    ; Transmit 2-byte checksum (D=MSB, E=LSB)
+    ld      a, d
+    call    fuji_tx_byte
+    jr      c, mntimg_probe_fail
+    ld      a, e
+    call    fuji_tx_byte
+    jr      c, mntimg_probe_fail
+
+    ; Receive 1-byte wire status (0x00 = success)
+    call    fuji_rx_byte
+    jr      c, mntimg_probe_fail
+    or      a
+    jr      nz, mntimg_probe_fail
+
+    ; Check if Sector 0 begins with "DiskDISK" (8 bytes)
+    ld      hl, sec0_buf
+    ld      de, diskdisk_magic
+    ld      b, 8
+sec0_cmp:
+    ld      a, (de)
+    cp      (hl)
+    jr      nz, sec0_is_jv1
+    inc     hl
+    inc     de
+    djnz    sec0_cmp
+
+    ; Image has DiskDISK header: container offset = 1
+    ld      a, 1
+    ld      (container_offset), a
+    jr      sec0_probe_done
+
+sec0_is_jv1:
+    ; Image is raw JV1: container offset = 0
+    xor     a
+    ld      (container_offset), a
+    jr      sec0_probe_done
+
+mntimg_probe_fail:
+    ; On probe communication failure, default to DiskDISK offset 1
+    ld      a, 1
+    ld      (container_offset), a
+
+sec0_probe_done:
+    ; -------------------------------------------------------------------------
+    ; Live Operating System Integration:
+    ; 1. Set dw_offset[slot] to container offset (1 for DiskDISK, 0 for JV1)
+    ; 2. Set drv_target_table[slot] entry to DRV_TARGET_DW (1)
+    ; 3. Synchronize target DCTn$ from DCT0$ template
+    ; 4. Set 1-hot physical drive select bit in DCTn$+4
+    ; 5. Set write-protect bit according to mode
+    ; -------------------------------------------------------------------------
+    ld      a, (target_slot)
+    ld      e, a
+    ld      d, 0
+    ld      hl, dw_offset
+    add     hl, de
+    ld      a, (container_offset)
+    ld      (hl), a             ; Set container offset in kernel dw_offset table
+
     ld      a, (target_slot)
     ld      e, a
     ld      d, 0
@@ -104,14 +198,26 @@ mntimg_do_mount:
     ld      bc, DCT_SIZE
     ldir
 
-    ; Adjust drive ID bits in DCTn$+4
+    ; Compute 1-hot physical drive select mask: 1 << slot
+    ; Slot 0 -> 0x01, Slot 1 -> 0x02, Slot 2 -> 0x04, Slot 3 -> 0x08
+    ld      a, (target_slot)
+    ld      b, a
+    ld      a, 1
+    inc     b
+    dec     b
+    jr      z, drive_mask_done
+drive_mask_loop:
+    add     a, a                ; Shift left
+    djnz    drive_mask_loop
+drive_mask_done:
+    ld      c, a                ; C = 1-hot drive mask
+
+    ; Set drive select code in DCTn$+4
     ld      ix, (target_dct)
     ld      a, (ix + 4)
-    and     0F8h                ; Clear low 3 bits (drive unit)
-    ld      c, a
-    ld      a, (target_slot)
-    or      c
-    ld      (ix + 4), a         ; Set drive unit to slot (0..3)
+    and     0F0h                ; Preserve Alien (0x10) and Double-Sided (0x20)
+    or      c                   ; Set 1-hot physical drive bit
+    ld      (ix + 4), a
 
     ; Reset current cylinder to 0
     xor     a
@@ -129,7 +235,7 @@ mntimg_rw:
     jr      mntimg_display
 
 mntimg_update_dct0:
-    ; For drive 0, only update write-protect bit according to mode
+    ; For drive 0, update write-protect bit according to mode
     ld      ix, DCT0$
     ld      a, (target_mode)
     cp      FUJI_MODE_READ
@@ -140,7 +246,7 @@ mntimg_rw0:
     res     7, (ix + 3)
 
 mntimg_display:
-    ; Display confirmation: "Device Slot <slot> mounted as Drive :<slot> (Mode: <RO|WO|RW>)"
+    ; Display confirmation
     ld      hl, msg_pfx
     _DSPLY
     ld      a, (target_slot)
@@ -161,24 +267,32 @@ mntimg_display:
     jr      z, mntimg_pr_rw
     ld      hl, msg_mode_unk
     _DSPLY
-    jr      mntimg_done
+    jr      mntimg_pr_fmt
 
 mntimg_pr_ro:
     ld      hl, msg_mode_ro
     _DSPLY
-    jr      mntimg_done
+    jr      mntimg_pr_fmt
 
 mntimg_pr_wo:
     ld      hl, msg_mode_wo
     _DSPLY
-    jr      mntimg_done
+    jr      mntimg_pr_fmt
 
 mntimg_pr_rw:
     ld      hl, msg_mode_rw
     _DSPLY
 
-mntimg_done:
-    ld      hl, msg_sfx
+mntimg_pr_fmt:
+    ld      a, (container_offset)
+    or      a
+    jr      z, mntimg_fmt_jv1
+    ld      hl, msg_fmt_dd
+    _DSPLY
+    _EXIT
+
+mntimg_fmt_jv1:
+    ld      hl, msg_fmt_jv
     _DSPLY
     _EXIT
 
@@ -219,19 +333,25 @@ msg_mode_ro:    DB  "RO", 03h
 msg_mode_wo:    DB  "WO", 03h
 msg_mode_rw:    DB  "RW", 03h
 msg_mode_unk:   DB  "--", 03h
-msg_sfx:        DB  ").", CR, 03h
+msg_fmt_dd:     DB  ", Format: DiskDISK).", CR, 03h
+msg_fmt_jv:     DB  ", Format: JV1).", CR, 03h
+diskdisk_magic: DB  "DiskDISK"
 
 ; -----------------------------------------------------------------------------
 ; Dynamic Buffers
 ; -----------------------------------------------------------------------------
-target_slot:    DB  0
-target_mode:    DB  0
-target_dct:     DW  0
-arg_buf:        DS  16
+target_slot:      DB  0
+target_mode:      DB  0
+container_offset: DB  1
+target_dct:       DW  0
+arg_buf:          DS  16
 
 mount_req:
-mount_req_slot: DB  0
-mount_req_mode: DB  0
+mount_req_slot:   DB  0
+mount_req_mode:   DB  0
+
+sec0_req:         DS  5
+sec0_buf:         DS  256
 
 ; -----------------------------------------------------------------------------
 ; FujiNet Library

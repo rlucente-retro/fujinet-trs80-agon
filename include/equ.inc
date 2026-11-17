@@ -98,6 +98,7 @@ DCT_EMPTY_OP    EQU     00h     ; 'NOP' opcode: marks drive slot unmounted / off
 ; Agon Light 2 TRSDOS 7 Storage Router Equates
 ; ------------------------------------------------------------------------------
 drv_target_table EQU    0E76h   ; 8-byte drive target table (:0 to :7)
+dw_offset       EQU     0F78h   ; 8-byte DriveWire container offset table (:0 to :7)
 DRV_TARGET_SD   EQU     0       ; Target: Local Agon MicroSD card (SPI0)
 DRV_TARGET_DW   EQU     1       ; Target: FujiNet DriveWire (UART1)
 DRV_TARGET_MEMDISK EQU  2       ; Target: High SRAM MEMDISK (Banks 1..7)
