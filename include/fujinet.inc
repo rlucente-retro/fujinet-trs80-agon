@@ -27,6 +27,7 @@ FUJI_CMD_GET_SSID       EQU     14h     ; Query currently configured Wi-Fi SSID
 FUJI_CMD_GET_WIFI_STAT  EQU     15h     ; Query Wi-Fi connection status (03 = connected)
 FUJI_CMD_DISCONNECT     EQU     16h     ; Disconnect from current Wi-Fi network
 FUJI_CMD_GET_DEV_FILE   EQU     0DAh    ; Fetch full 256-byte path of mounted image
+FUJI_CMD_SET_DEV_FILE   EQU     0E2h    ; Assign disk image fullpath (slot, host, mode, 256B path)
 FUJI_CMD_GET_ADAPTER_CFG EQU    0E8h    ; Query 140-byte AdapterConfig block
 FUJI_CMD_UNMOUNT_IMAGE  EQU     0E9h    ; Unmount disk image from specified device slot
 FUJI_CMD_GET_TIME       EQU     0EAh    ; Query FujiNet RTC / network time block
@@ -35,7 +36,9 @@ FUJI_CMD_CREATE_IMAGE   EQU     0ECh    ; Create new blank disk image on host
 FUJI_CMD_GET_DEV_SLOTS  EQU     0F2h    ; Query device slot table (152B / 304B)
 FUJI_CMD_SET_HOST_SLOTS EQU     0F3h    ; Write complete 256-byte host table
 FUJI_CMD_GET_HOST_SLOTS EQU     0F4h    ; Query 256-byte host slot table (8 slots x 32B)
-FUJI_CMD_SET_DEVICE_SLOT EQU    0F7h    ; Assign disk image to device slot
+FUJI_CMD_CLOSE_DIR      EQU     0F5h    ; Close open directory handle
+FUJI_CMD_READ_DIR_ENTRY EQU     0F6h    ; Read directory entry
+FUJI_CMD_OPEN_DIR       EQU     0F7h    ; Open directory on host
 FUJI_CMD_MOUNT_IMAGE    EQU     0F8h    ; Mount assigned image into device slot
 FUJI_CMD_MOUNT_HOST     EQU     0F9h    ; Connect to remote host / mount TNFS export
 FUJI_CMD_RESET          EQU     0FFh    ; Software reset FujiNet adapter state machine
@@ -50,11 +53,13 @@ FUJI_STAT_BAD_DEV       EQU     92h     ; Invalid device slot specified
 FUJI_STAT_TIMEOUT       EQU     93h     ; Network / TNFS communication timeout
 
 ; ------------------------------------------------------------------------------
-; FujiNet Image Access Modes
+; FujiNet Image Access Modes & Flags
 ; ------------------------------------------------------------------------------
 FUJI_MODE_READ          EQU     01h     ; Read-only mode
 FUJI_MODE_WRITE         EQU     02h     ; Write-only mode
 FUJI_MODE_READWRITE     EQU     03h     ; Read-write mode
+DISK_ACCESS_MODE_MOUNTED EQU    40h     ; Bit 6: Slot has active image mounted
+MAX_FILENAME_LEN        EQU     256     ; Maximum full pathname length
 
 ; ------------------------------------------------------------------------------
 ; FujiNet Adapter Configuration Structure (140 bytes total, returned by 0xE8)
