@@ -91,17 +91,17 @@ finish:
 test_ip:        DB  192, 168, 1, 100
 test_mac:       DB  00h, 1Ah, 2Bh, 3Ch, 4Dh, 5Eh
 
-msg_title:      DB  "FNTEST: FujiNet Transaction Engine Diagnostic", CR
-msg_div:        DB  "--------------------------------------------------", CR
-msg_t1:         DB  "[1] Verifying display and formatting helpers:", CR
+msg_title:      DB  "FNTEST: FujiNet Transaction Engine Diagnostic", CR, 03h
+msg_div:        DB  "--------------------------------------------------", CR, 03h
+msg_t1:         DB  "[1] Verifying display and formatting helpers:", CR, 03h
 msg_dec:        DB  "    Decimal (42):           ", 03h
 msg_hex:        DB  "    Hexadecimal (0xA5):     0x", 03h
 msg_ip:         DB  "    IPv4 Address:           ", 03h
 msg_mac:        DB  "    MAC Address:            ", 03h
-msg_t2:         DB  "[2] Testing live FujiNet handshake (OP_FUJI 0x00)...", CR
-msg_poll_ok:    DB  "    [PASS] FujiNet adapter is ONLINE and ACTIVE (0x01)", CR
-msg_poll_fail:  DB  "    [FAIL] FujiNet poll failed (timeout or offline)", CR
-msg_done:       DB  "Diagnostic test complete.", CR
+msg_t2:         DB  "[2] Testing live FujiNet handshake (OP_FUJI 0x00)...", CR, 03h
+msg_poll_ok:    DB  "    [PASS] FujiNet adapter is ONLINE and ACTIVE (0x01)", CR, 03h
+msg_poll_fail:  DB  "    [FAIL] FujiNet poll failed (timeout or offline)", CR, 03h
+msg_done:       DB  "Diagnostic test complete.", CR, 03h
 
 ; -----------------------------------------------------------------------------
 ; FujiNet Library Routines Included within 0x2600 User Workspace

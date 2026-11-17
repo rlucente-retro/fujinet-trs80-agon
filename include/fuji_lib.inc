@@ -750,9 +750,9 @@ fps_inv:
     scf                         ; Set Carry
     ret
 
-msg_err_gen:    DB "FujiNet error: General command failure", CR
-msg_err_fnf:    DB "FujiNet error: Host or file not found", CR
-msg_err_bdev:   DB "FujiNet error: Invalid device slot", CR
-msg_err_netto:  DB "FujiNet error: Network / server timeout", CR
-msg_err_hwto:   DB "FujiNet error: No response from adapter (timeout)", CR
+msg_err_gen:    DB "FujiNet error: General command failure", CR, 03h
+msg_err_fnf:    DB "FujiNet error: Host or file not found", CR, 03h
+msg_err_bdev:   DB "FujiNet error: Invalid device slot", CR, 03h
+msg_err_netto:  DB "FujiNet error: Network / server timeout", CR, 03h
+msg_err_hwto:   DB "FujiNet error: No response from adapter (timeout)", CR, 03h
 msg_err_unk:    DB "FujiNet error code: 0x", 03h

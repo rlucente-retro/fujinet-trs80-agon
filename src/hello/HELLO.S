@@ -39,12 +39,12 @@ start:
 ; Each line terminates with CR (0x0D) to display the line and advance cursor.
 ; ------------------------------------------------------------------------------
 line1:
-    DB          "==================================================", CR
+    DB          "==================================================", CR, 03h
 line2:
-    DB          " Hello from authentic LS-DOS CMD on Agon Light 2! ", CR
+    DB          " Hello from authentic LS-DOS CMD on Agon Light 2! ", CR, 03h
 line3:
-    DB          " Phase 3: Build Pipeline & CMD Packager Qualified  ", CR
+    DB          " Phase 3: Build Pipeline & CMD Packager Qualified  ", CR, 03h
 line4:
-    DB          "==================================================", CR
+    DB          "==================================================", CR, 03h
 
     END         start

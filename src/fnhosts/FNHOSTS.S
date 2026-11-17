@@ -96,11 +96,11 @@ hosts_err:
 ; -----------------------------------------------------------------------------
 ; Display Labels & Formatting Strings
 ; -----------------------------------------------------------------------------
-msg_hdr:            DB  "FujiNet Host Slot Table", CR
-msg_div:            DB  "--------------------------------------------------", CR
+msg_hdr:            DB  "FujiNet Host Slot Table", CR, 03h
+msg_div:            DB  "--------------------------------------------------", CR, 03h
 msg_slot_prefix:    DB  "Slot ", 03h
 msg_slot_suffix:    DB  ":  ", 03h
-msg_empty:          DB  "(empty)", CR
+msg_empty:          DB  "(empty)", CR, 03h
 
 ; -----------------------------------------------------------------------------
 ; Dynamic Buffers

@@ -110,8 +110,8 @@ stat_err:
 ; -----------------------------------------------------------------------------
 ; Display Labels & Formatting Strings
 ; -----------------------------------------------------------------------------
-msg_hdr:    DB  "FujiNet Adapter Status", CR
-msg_div:    DB  "--------------------------------------------------", CR
+msg_hdr:    DB  "FujiNet Adapter Status", CR, 03h
+msg_div:    DB  "--------------------------------------------------", CR, 03h
 msg_fw:     DB  "Firmware:      ", 03h
 msg_host:   DB  "Hostname:      ", 03h
 msg_ssid:   DB  "SSID:          ", 03h

@@ -14,12 +14,8 @@
     ORG     USER_PROG_BASE      ; 2600h
 
 start:
-    ; Check if command tail was passed in HL (standard LS-DOS .CMD entry)
-    ld      a, h
-    or      l
-    jr      nz, geth_hl_ok
+    ; Parse <slot> from command line buffer INBUF$
     ld      hl, INBUF$
-geth_hl_ok:
     call    fuji_skip_cmd
     ld      de, arg_buf
     call    fuji_parse_arg
@@ -105,11 +101,11 @@ geth_err:
 ; -----------------------------------------------------------------------------
 ; Display Labels & Formatting Strings
 ; -----------------------------------------------------------------------------
-msg_usage:  DB  "Usage: FNGETH <slot 0-7>", CR
-msg_bad_slot: DB "Error: Slot must be 0 to 7", CR
+msg_usage:  DB  "Usage: FNGETH <slot 0-7>", CR, 03h
+msg_bad_slot: DB "Error: Slot must be 0 to 7", CR, 03h
 msg_pfx:    DB  "Host Slot ", 03h
 msg_sep:    DB  ": ", 03h
-msg_empty:  DB  "(empty)", CR
+msg_empty:  DB  "(empty)", CR, 03h
 
 ; -----------------------------------------------------------------------------
 ; Dynamic Buffers
