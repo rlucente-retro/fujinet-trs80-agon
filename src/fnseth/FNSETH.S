@@ -104,6 +104,7 @@ copy_host:
 
 copy_done:
     ; 5. Write back complete 256-byte table via FUJI_CMD_SET_HOST_SLOTS (0xF3)
+    ; Note: FujiNet firmware automatically persists host slots to flash config on 0xF3
     ld      a, FUJI_CMD_SET_HOST_SLOTS
     ld      hl, hosts_buf
     ld      bc, HOST_TABLE_SIZE
@@ -113,15 +114,7 @@ copy_done:
     call    fuji_get_error
     jr      c, seth_err
 
-    ; 6. Persist host slots to NVS flash via FUJI_CMD_WRITE_HOSTS (0xFA)
-    ld      a, FUJI_CMD_WRITE_HOSTS
-    call    fuji_cmd
-    jr      c, seth_comm_err
-
-    call    fuji_get_error
-    jr      c, seth_err
-
-    ; 7. Display success confirmation
+    ; 6. Display success confirmation
     ld      hl, msg_pfx
     _DSPLY
     ld      a, (target_slot)

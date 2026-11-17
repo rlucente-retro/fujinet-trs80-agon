@@ -38,8 +38,6 @@ FUJI_CMD_GET_HOST_SLOTS EQU     0F4h    ; Query 256-byte host slot table (8 slot
 FUJI_CMD_SET_DEVICE_SLOT EQU    0F7h    ; Assign disk image to device slot
 FUJI_CMD_MOUNT_IMAGE    EQU     0F8h    ; Mount assigned image into device slot
 FUJI_CMD_MOUNT_HOST     EQU     0F9h    ; Connect to remote host / mount TNFS export
-FUJI_CMD_WRITE_HOSTS    EQU     0FAh    ; Persist host slot table to NVS / flash
-FUJI_CMD_WRITE_DEVICES  EQU     0FBh    ; Persist device slot table to NVS / flash
 FUJI_CMD_RESET          EQU     0FFh    ; Software reset FujiNet adapter state machine
 
 ; ------------------------------------------------------------------------------
