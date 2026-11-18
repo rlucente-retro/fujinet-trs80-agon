@@ -170,6 +170,7 @@ The system supports two physical transports:
   * `*trs80 free <image.dsk>`: Displays disk geometry, capacity, and remaining free space.
   * `*trs80 dump <image.dsk>[,<file>]`: Hex/ASCII dumps of arbitrary sectors or files.
   * `*trs80 attr <image.dsk>,<file>`: Views and modifies file permissions and attributes.
+  * `*trs80 map [dir=/disks]`: Recursively descends directory trees, resolving Base LBAs and generating `/disks/sdmap.txt` while preserving folder hierarchy (`base/boot.dsk` vs `experimental/boot.dsk`).
 
 ### Native TRSDOS Runtime Command Utilities
 Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
