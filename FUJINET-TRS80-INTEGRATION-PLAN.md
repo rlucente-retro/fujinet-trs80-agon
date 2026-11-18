@@ -712,13 +712,24 @@ flowchart TD
   * *Contiguous Allocation Guarantee:* Disk images created via `*TRSNEW` or copied to a cleanly formatted SD card occupy contiguous clusters. When `FNBOOT` or `SDMOUNT.CMD` mounts an image, it inspects the FAT32 File Allocation Table starting from the file's first cluster (`DIR_FstClusHI` / `DIR_FstClusLO`). If the cluster chain is strictly contiguous (each next cluster equals previous cluster + 1), it populates `sddvr_base_lba` with the physical starting LBA:
     `BaseLBA = ClusterBeginLBA + ((FirstCluster - 2) * SectorsPerCluster)`
     In this contiguous state, direct hardware SPI0 LBA transfers operate with zero FAT overhead at maximum wire speed.
-  * *Hierarchical MicroSD Disk Map & Bank 0 Mailbox (`/disks/sdmap.txt`):*
-    To decouple local microSD disk management from the TRSDOS boot volume (which may be a write-protected network volume on Drive `:0`), `*trs80 map` or `FNBOOT` performs a recursive descent walk across the `/disks/` directory tree on FAT32 (e.g. `/disks/base/boot.dsk` vs `/disks/experimental/boot.dsk`), resolving 32-bit physical Base LBAs while preserving directory hierarchies to avoid naming collisions. It outputs a sequential, contiguous mapping file `/disks/sdmap.txt` on the FAT32 volume.
-    At boot, `FNBOOT` writes the starting Base LBA and byte length of `/disks/sdmap.txt` into Bank 0 lowcore RAM:
+  * *Hierarchical MicroSD Disk Map & Bank 0 Mailbox (`sdmap.txt`):*
+    To decouple local microSD disk management from the TRSDOS boot volume (which may be a write-protected network volume on Drive `:0`), `*trs80 map` or `FNBOOT` performs a recursive descent walk across any user-specified directory tree on FAT32 (e.g. `/disks/`, `/trs80/`, `./`, or root `/`). While `/disks/` serves as a standard default convention, the root folder is completely arbitrary. The scanner resolves 32-bit physical Base LBAs while preserving directory hierarchies (e.g. `base/boot.dsk` vs `experimental/boot.dsk`) to eliminate naming collisions. It outputs a sequential, contiguous text mapping file (defaulting to `sdmap.txt` in the scanned directory).
+    At boot, `FNBOOT` resolves the single physical starting Base LBA of the mapping file and writes it along with its byte length into Bank 0 lowcore RAM:
     * `sddvr_base_lba` (`0xF408`–`0xF427`, 32B): Active 32-bit Base LBAs for Drives `:0` through `:7`.
-    * `sddvr_map_lba` (`0xF428`–`0xF42B`, 4B): 32-bit starting Base LBA of `/disks/sdmap.txt`.
-    * `sddvr_map_len` (`0xF42C`–`0xF42D`, 2B): Byte size of `/disks/sdmap.txt`.
-    In TRSDOS, `SDMOUNT` reads `/disks/sdmap.txt` directly via hardware SPI0 block streaming (1 ms), enabling named hierarchical mounting (`SDMOUNT 1 "base/boot.dsk"`) and menu-driven selection without any FAT32 filesystem code in TRSDOS.
+    * `sddvr_map_lba` (`0xF428`–`0xF42B`, 4B): 32-bit starting Base LBA of the mapping file (`0x00000000` if none).
+    * `sddvr_map_len` (`0xF42C`–`0xF42D`, 2B): Byte size of the mapping file (`0x0000` if none).
+    
+    *Mapping File Discovery & Configuration in `FNBOOT`:*
+    `FNBOOT` does not require the mapping file to be named `sdmap.txt` or to be placed in any specific folder. It locates the mapping file via a deterministic lookup hierarchy:
+    1. **Explicit Parameter / Config:** If passed via CLI flag (`*FNBOOT -m <path>`, e.g. `*FNBOOT -m /games/trs80/catalog.txt`), interactive UI selection, or `fnboot.ini` (`MAPFILE=<path>`), `FNBOOT` resolves that exact file.
+    2. **Default Search Probe:** If no path is specified, `FNBOOT` probes standard candidate locations in order:
+       * `./sdmap.txt` (current working directory in MOS)
+       * `/disks/sdmap.txt`
+       * `/trs80/sdmap.txt`
+       * `/sdmap.txt` (root of FAT32 volume)
+    3. **Graceful Fallback:** If no mapping file is found or if mapping is omitted, `sddvr_map_lba` and `sddvr_map_len` are initialized to zero. TRSDOS boots cleanly; manual numerical LBA mounting (`SDMOUNT <drv> <lba>`) and unmounting (`SDMOUNT <drv> 0`) remain fully supported.
+    
+    Because TRSDOS and `SDMOUNT` receive only the raw 32-bit block address in `sddvr_map_lba`, **TRSDOS is 100% path-agnostic and FAT32-independent**. In TRSDOS, `SDMOUNT` reads the catalog directly via hardware SPI0 block streaming (1 ms), enabling named hierarchical mounting (`SDMOUNT 1 "base/boot.dsk"`) and menu-driven selection without any hardcoded host paths or FAT32 filesystem code in TRSDOS.
 
 #### 2. DriveWire Block Driver Architecture (`driver-DWDVR.S`)
 * Natural 1:1 mapping across network drives: `FujiNet Wire Slot = LDRV`.
@@ -891,6 +902,17 @@ Executed from the Quark MOS `*` prompt before launching TRSDOS:
    * Assigns disk images to TRSDOS Logical Drives `:0` through `:7` (Mode 1, Mode 2, or Mode 3).
    * Sets VDP font/colors, stages lean 64 KB `TRSDOS.bin`, remaps SRAM, and boots.
    * **Boot Mailbox Staging & IPL Simplification:** Resolves FAT32 cluster addresses and FujiNet slot indices in Quark MOS, writing the staged boot mailbox (`drv_target_table` and `sddvr_base_lba`) directly into fixed lowcore SRAM before jumping to `TRSDOS.bin`. This allows `ipl-BIOS.s` to be simplified into a lean, deterministic dispatcher without lowcore probing loops, timeouts, or retry state machines.
+   * **SD Mapping Table Discovery & Configuration:**
+     `FNBOOT` is responsible for locating the microSD disk map file (created by `*trs80 map`) and staging its 32-bit physical Base LBA and byte size into `sddvr_map_lba` (`0xF428`) and `sddvr_map_len` (`0xF42C`). The location and filename of this mapping file are completely configurable:
+     * *CLI Option:* `*FNBOOT [-m <mapfile>]` (e.g. `*FNBOOT -m /games/trs80/catalog.txt` or `*FNBOOT -m /trs80/sdmap.txt`).
+     * *Configuration File:* Reads `MAPFILE=<path>` from `fnboot.ini` or `/fnboot.cfg`.
+     * *Interactive Menu Selection:* The visual pre-boot menu displays the detected mapping file with an option to browse/change the active map file or trigger an immediate re-scan.
+     * *Default Probing Order:* If no map file is explicitly specified, `FNBOOT` automatically probes standard candidate paths in order:
+       1. `./sdmap.txt` (current working directory in MOS)
+       2. `/disks/sdmap.txt` (standard disk repository)
+       3. `/trs80/sdmap.txt` (standard TRS-80 directory)
+       4. `/sdmap.txt` (root of FAT32 filesystem)
+     * *Graceful Fallback:* If no mapping table is found, `sddvr_map_lba` and `sddvr_map_len` are set to `0`. `TRSDOS.bin` boots normally; raw numerical LBA mounting (`SDMOUNT <drv> <lba>`) remains functional.
 
 2. **`trs80` (Unified Toolshed-Style MOS Disk & File Utility Suite):**
    Rather than fragmenting functionality across disparate single-purpose star commands, the MOS pre-boot environment provides a single, comprehensive, multicall CLI executive **`*trs80`** (aliased to `*trs` in `/mos/`), modeled directly on the proven architecture of **Toolshed's `os9` and `decb`** commands:
@@ -924,8 +946,8 @@ Executed from the Quark MOS `*` prompt before launching TRSDOS:
        Emits formatted hexadecimal and ASCII dumps of arbitrary physical sectors or individual file extents.
      * `*trs80 attr <image.dsk>,<filename> [permissions]`  
        Inspects or updates file access attributes, update flags, and protection passwords.
-     * `*trs80 map [scan_dir=/disks]`  
-       Performs a recursive descent scan across all subdirectories under `scan_dir` on the FAT32 microSD card (e.g. `/disks/base/`, `/disks/games/adventure/`, `/disks/experimental/`). Resolves the physical 32-bit starting Base LBA for each discovered disk image and generates a sequential, 100% contiguous text catalog `/disks/sdmap.txt`. Preserves full relative directory paths (e.g. `base/boot.dsk` vs `experimental/boot.dsk`), completely eliminating name collisions across user folder hierarchies. Writes the starting Base LBA and byte size of `/disks/sdmap.txt` into the lowcore mailbox for TRSDOS.
+     * `*trs80 map [scan_dir] [-o mapfile]`  
+       Performs a recursive descent scan across all subdirectories under `scan_dir` on the FAT32 microSD card (defaults to `./` or `/disks/`, but accepts any arbitrary path such as `/trs80/` or `/`). Resolves the physical 32-bit starting Base LBA for each discovered disk image and generates a sequential, 100% contiguous text catalog (defaulting to `<scan_dir>/sdmap.txt` or a specified `mapfile`). Preserves relative directory paths (e.g. `base/boot.dsk` vs `experimental/boot.dsk`), completely eliminating name collisions across user folder hierarchies. Writes the starting Base LBA and byte size into the lowcore mailbox for TRSDOS.
    * **Universal Container Abstraction Layer:**
      The `trs80` utility automatically identifies and abstracts the underlying container format:
      * **`DiskDISK` (.dsk):** Detects `"DiskDISK"` ASCII signature; parses geometry from the 256-byte header; applies `+256` byte offset to sector addressing.
@@ -998,13 +1020,13 @@ Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
 
 #### 10. `DRVMAP.CMD`
 * **Syntax:** `DRVMAP`
-* **Payload:** Inspects all 8 logical drive DCTs (`DCT0$`..`DCT7$`) and the storage target table. Displays whether each drive is mapped to **Local SD** (cross-referencing active Base LBA against `/disks/sdmap.txt` to display the full relative path, e.g. `base/boot.dsk` or `games/adventure/colossal.dsk`), **FujiNet** (Slot number, access mode, image path, container format), or **High SRAM MEMDISK**.
+* **Payload:** Inspects all 8 logical drive DCTs (`DCT0$`..`DCT7$`) and the storage target table. Displays whether each drive is mapped to **Local SD** (cross-referencing active Base LBA against `sdmap.txt` via `sddvr_map_lba` to display the full relative path, e.g. `base/boot.dsk` or `games/adventure/colossal.dsk`), **FujiNet** (Slot number, access mode, image path, container format), or **High SRAM MEMDISK**.
 
 #### 11. `SDMOUNT.CMD`
 * **Syntax:** `SDMOUNT [<drv>] ["<path>" | <index> | <lba>] [mode]`
 * **Payload:** Updates the local SPI0 driver table for logical drive `<drv>`, sets 32-bit Base LBA in `sddvr_base_lba`, and activates `DCTn$`.
-  * **Interactive Menu Mode (`SDMOUNT`):** Reads the Base LBA of `/disks/sdmap.txt` from lowcore mailbox `sddvr_map_lba` (`0xF428`), streams the 512-byte blocks via hardware SPI0, and renders a paginated, numbered list of all disk images on the microSD card preserving folder hierarchy.
-  * **Mount by Hierarchical Path (`SDMOUNT <drv> "<path>"`):** Matches path (e.g. `SDMOUNT 1 "games/adventure/colossal.dsk"` or `SDMOUNT 1 "base/boot.dsk"`), retrieves its 32-bit LBA from `/disks/sdmap.txt`, and commits the mount. Supports unambiguous partial matching.
+  * **Interactive Menu Mode (`SDMOUNT`):** Reads the Base LBA of `sdmap.txt` from lowcore mailbox `sddvr_map_lba` (`0xF428`), streams the 512-byte blocks via hardware SPI0, and renders a paginated, numbered list of all disk images on the microSD card preserving folder hierarchy.
+  * **Mount by Hierarchical Path (`SDMOUNT <drv> "<path>"`):** Matches path (e.g. `SDMOUNT 1 "games/adventure/colossal.dsk"` or `SDMOUNT 1 "base/boot.dsk"`), retrieves its 32-bit LBA from `sdmap.txt`, and commits the mount. Supports unambiguous partial matching.
   * **Mount by Menu Index (`SDMOUNT <drv> <index>`):** Mounts directly by menu number (e.g. `SDMOUNT 1 2`).
   * **Manual LBA Override (`SDMOUNT <drv> <lba>`):** Retains direct numerical LBA mounting for scripting and advanced diagnostics.
   * **Unmount (`SDMOUNT <drv> 0`):** Deactivates drive and clears its Base LBA.

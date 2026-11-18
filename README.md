@@ -159,7 +159,7 @@ The system supports two physical transports:
 ## Pre-Boot and In-DOS Utilities
 
 ### Pre-Boot Visual Manager & MOS File Interchange
-* **`FNBOOT`:** Interactive full-screen MOS application that queries FujiNet adapter status, enumerates TNFS host slots and local Agon SD images, assigns disk images to Drives `:0` through `:7`, and launches `TRSDOS.bin`.
+* **`FNBOOT`:** Interactive full-screen MOS application that queries FujiNet adapter status, enumerates TNFS host slots and local Agon SD images, assigns disk images to Drives `:0` through `:7`, stages the SD mapping table into lowcore RAM (`*FNBOOT [-m <mapfile>]`, or automatically probing `./sdmap.txt`, `/disks/sdmap.txt`, `/trs80/sdmap.txt`, `/sdmap.txt`), and launches `TRSDOS.bin`.
 * **`*trs80` (Toolshed-Style MOS Disk & File Suite):** Unified multicall executive running in eZ80 24-bit ADL mode under Quark MOS. Uses standard comma syntax (`<image.dsk>,<guest_file>`) to manage virtual disk images:
   * `*trs80 dir <image.dsk>[,<pattern>]`: Lists files, sizes, GAT allocations, and free space.
   * `*trs80 copy <src> <dst>`: Bidirectional file transfers between FAT32 and virtual disks, or disk-to-disk cloning.
@@ -170,7 +170,7 @@ The system supports two physical transports:
   * `*trs80 free <image.dsk>`: Displays disk geometry, capacity, and remaining free space.
   * `*trs80 dump <image.dsk>[,<file>]`: Hex/ASCII dumps of arbitrary sectors or files.
   * `*trs80 attr <image.dsk>,<file>`: Views and modifies file permissions and attributes.
-  * `*trs80 map [dir=/disks]`: Recursively descends directory trees, resolving Base LBAs and generating `/disks/sdmap.txt` while preserving folder hierarchy (`base/boot.dsk` vs `experimental/boot.dsk`).
+  * `*trs80 map [dir] [-o mapfile]`: Recursively descends any directory tree (arbitrary root such as `/trs80`, `/disks`, or `./`), resolving Base LBAs and generating `sdmap.txt` while preserving folder hierarchy (`base/boot.dsk` vs `experimental/boot.dsk`).
 
 ### Native TRSDOS Runtime Command Utilities
 Conforming to the LS-DOS 6.x constraint of **<= 8-character basenames**:
