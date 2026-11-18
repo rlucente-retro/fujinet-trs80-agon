@@ -187,6 +187,42 @@ drv_is_sd:
     or      (hl)
     jr      z, sd_lba_zero
 
+    ; Try resolving path from sdmap.txt
+    call    map_stream_init
+    jr      c, sd_print_raw_lba
+
+sd_search_loop:
+    call    map_get_line
+    jr      c, sd_print_raw_lba
+    call    map_parse_line
+    jr      c, sd_search_loop
+
+    ; Compare 4 bytes of map_entry_lba with (cur_lba_ptr)
+    ld      hl, (cur_lba_ptr)
+    ld      de, map_entry_lba
+    ld      b, 4
+sd_cmp_lba:
+    ld      a, (de)
+    cp      (hl)
+    jr      nz, sd_search_loop
+    inc     de
+    inc     hl
+    djnz    sd_cmp_lba
+
+    ; Match found in sdmap.txt! Print "\"<path>\" (Base LBA: 0xXXXXXXXX)"
+    ld      hl, msg_quote
+    _DSPLY
+    ld      hl, map_entry_path
+    call    fuji_print_str
+    ld      hl, msg_quote_lba_pfx
+    _DSPLY
+    ld      hl, (cur_lba_ptr)
+    call    print_hex32
+    ld      hl, msg_close_paren_cr
+    _DSPLY
+    jr      drv_next
+
+sd_print_raw_lba:
     ; Print Base LBA: 0xXXXXXXXX
     ld      hl, msg_lba_pfx
     _DSPLY
@@ -303,6 +339,9 @@ msg_unassigned: DB  "(unassigned)\"", CR, 03h
 
 msg_lba_pfx:    DB  "Base LBA: 0x", 03h
 msg_no_lba:     DB  "(No Base LBA assigned)", CR, 03h
+msg_quote:      DB  "\"", 03h
+msg_quote_lba_pfx:  DB  "\" (Base LBA: 0x", 03h
+msg_close_paren_cr: DB  ")", CR, 03h
 
 ; -----------------------------------------------------------------------------
 ; Dynamic Buffers
@@ -315,8 +354,9 @@ query_slot:     DB  0
 path_buf:       DS  MAX_FILENAME_LEN
 
 ; -----------------------------------------------------------------------------
-; FujiNet Library
+; Libraries
 ; -----------------------------------------------------------------------------
+    INCLUDE "sd_lib.inc"
     INCLUDE "fuji_lib.inc"
 
     END     start

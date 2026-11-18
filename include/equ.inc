@@ -107,7 +107,9 @@ DRV_TARGET_MEMDISK EQU  2       ; Target: High SRAM MEMDISK (Banks 1..7)
 sddvr_inited    EQU     0F400h  ; MicroSD driver initialized flag (1 = ready)
 sd_subsector    EQU     0F401h  ; Sub-sector selector (0 = low 256B, 1 = high 256B)
 sd_cmd_buf      EQU     0F402h  ; 6-byte SPI CMD17 buffer
-sddvr_base_lba  EQU     0F408h  ; 8-entry table of 32-bit base LBAs (4B per drive)
+sddvr_base_lba  EQU     0F408h  ; 8-entry table of 32-bit base LBAs (4B per drive: 0xF408..0xF427)
+sddvr_map_lba   EQU     0F428h  ; 32-bit starting Base LBA of mapping file (4B)
+sddvr_map_len   EQU     0F42Ch  ; 16-bit byte size of mapping file (2B)
 
 ; ------------------------------------------------------------------------------
 ; Standard LS-DOS 6.3 / TRSDOS 7 Error Codes
@@ -151,3 +153,21 @@ UART_LSR_BI     EQU     10h     ; Bit 4: Break Interrupt
 UART_LSR_THRE   EQU     20h     ; Bit 5: Transmitter Holding Register Empty
 UART_LSR_TEMT   EQU     40h     ; Bit 6: Transmitter Empty
 UART_LSR_ERR    EQU     80h     ; Bit 7: Error in receiver FIFO
+
+; ------------------------------------------------------------------------------
+; Olimex Agon Light 2 Hardware Port Equates (Port B GPIO & SPI0)
+; ------------------------------------------------------------------------------
+PB_DR           EQU     09Ah    ; Port B Data Register
+PB_DDR          EQU     09Bh    ; Port B Data Direction Register
+PB_ALT1         EQU     09Ch    ; Port B Alternate Register 1
+PB_ALT2         EQU     09Dh    ; Port B Alternate Register 2
+
+SPI_BRG_L       EQU     0B8h    ; SPI Baud Rate Generator Low Byte
+SPI_BRG_H       EQU     0B9h    ; SPI Baud Rate Generator High Byte
+SPI_CTL         EQU     0BAh    ; SPI Control Register
+SPI_SR          EQU     0BDh    ; SPI Status Register
+SPI_RBR         EQU     0BCh    ; SPI Receive Buffer Register
+SPI_TSR         EQU     0BCh    ; SPI Transmit Shift Register
+
+CMD17_READ_BLOCK EQU    051h    ; SD Read Single Block (40h + 17)
+DATA_START_TOKEN EQU    0FEh    ; SD SPI Data Start Token

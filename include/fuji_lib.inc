@@ -613,6 +613,8 @@ fsc_loop1:
     jr      z, fsc_spaces
     cp      ','
     jr      z, fsc_spaces
+    cp      '('
+    jr      z, fsc_done
     inc     hl
     jr      fsc_loop1
 
@@ -730,6 +732,12 @@ fpa_q_done:
 ; ------------------------------------------------------------------------------
 fuji_parse_slot:
     push    hl
+    push    de
+    ld      a, (de)
+    cp      ':'                 ; Allow leading ':' for authentic LS-DOS drives (:0 to :7)
+    jr      nz, fps_no_col
+    inc     de
+fps_no_col:
     ld      a, (de)
     sub     '0'
     jr      c, fps_inv          ; < '0'
@@ -738,14 +746,15 @@ fuji_parse_slot:
     inc     de
     ld      h, a                ; Save slot
     ld      a, (de)
-    dec     de
     or      a
     jr      nz, fps_inv
     ld      a, h                ; Restore slot
+    pop     de
     pop     hl
     or      a                   ; Clear Carry
     ret
 fps_inv:
+    pop     de
     pop     hl
     scf                         ; Set Carry
     ret

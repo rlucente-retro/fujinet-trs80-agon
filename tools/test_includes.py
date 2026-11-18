@@ -92,11 +92,25 @@ class TestAssemblyIncludes(unittest.TestCase):
         self.assertEqual(equates.get("DRV_TARGET_MEMDISK"), 2)
         self.assertEqual(equates.get("sddvr_inited"), 0xF400)
         self.assertEqual(equates.get("sddvr_base_lba"), 0xF408)
+        self.assertEqual(equates.get("sddvr_map_lba"), 0xF428)
+        self.assertEqual(equates.get("sddvr_map_len"), 0xF42C)
 
         # Verify hardware UART1 ports
         self.assertEqual(equates.get("UART1_RBR"), 0xD0)
         self.assertEqual(equates.get("UART1_THR"), 0xD0)
         self.assertEqual(equates.get("UART1_LSR"), 0xD5)
+
+        # Verify hardware Port B and SPI0 ports
+        self.assertEqual(equates.get("PB_DR"), 0x9A)
+        self.assertEqual(equates.get("PB_DDR"), 0x9B)
+        self.assertEqual(equates.get("PB_ALT1"), 0x9C)
+        self.assertEqual(equates.get("PB_ALT2"), 0x9D)
+        self.assertEqual(equates.get("SPI_CTL"), 0xBA)
+        self.assertEqual(equates.get("SPI_SR"), 0xBD)
+        self.assertEqual(equates.get("SPI_RBR"), 0xBC)
+        self.assertEqual(equates.get("SPI_TSR"), 0xBC)
+        self.assertEqual(equates.get("CMD17_READ_BLOCK"), 0x51)
+        self.assertEqual(equates.get("DATA_START_TOKEN"), 0xFE)
 
     def test_fujinet_inc_exists_and_parses(self):
         fuji_path = os.path.join(INCLUDE_DIR, "fujinet.inc")
@@ -171,6 +185,29 @@ class TestAssemblyIncludes(unittest.TestCase):
         ]
         for sym in expected_symbols:
             self.assertIn(sym, content, f"include/fuji_lib.inc must define {sym}")
+
+    def test_sd_lib_inc_exists_and_contains_symbols(self):
+        lib_path = os.path.join(INCLUDE_DIR, "sd_lib.inc")
+        self.assertTrue(os.path.isfile(lib_path), "include/sd_lib.inc must exist")
+        with open(lib_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        expected_symbols = [
+            "sd_init:",
+            "sd_kick:",
+            "sd_tx_rx:",
+            "sd_wait_spi:",
+            "sd_select:",
+            "sd_deselect:",
+            "sd_read_block:",
+            "map_stream_init:",
+            "map_get_char:",
+            "map_get_line:",
+            "map_parse_line:",
+            "str_suffix_match:",
+        ]
+        for sym in expected_symbols:
+            self.assertIn(sym, content, f"include/sd_lib.inc must define {sym}")
 
 
 if __name__ == "__main__":
