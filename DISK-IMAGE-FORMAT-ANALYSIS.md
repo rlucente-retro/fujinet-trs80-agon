@@ -232,9 +232,10 @@ uint8_t probe_container_format(uint8_t slot) {
   - Maintain compatibility with authentic LS-DOS utilities like `HDSDIR` and `FMT`.
 
 #### Section 7 (Native TRSDOS & Quark MOS Utilities):
-* **Add MOS Utilities to Section 7.2:**
-  - `*JV3CONV`: Converts JV3 images to flat JV1/DiskDISK format directly under MOS.
-  - `*HDVCREATE`: Formats a blank Reed HDV image with a valid `56 CB` header and specified geometry (5 MB, 10 MB, 15 MB, 20 MB).
+* **Unified MOS Tool Suite (`*trs80` in Section 7.2):**
+  - Integrate native JV3 and HDV container support directly into the unified `*trs80` executive.
+  - `*trs80 copy input.jv3 output.dsk`: Directly converts indexed JV3 containers to flat DiskDISK or JV1 linear streams on the Agon FAT32 card.
+  - `*trs80 format <image.hdv> -f hdv -c <cyls> -h <heads>`: Formats blank Reed HDV images with authentic `56 CB` headers and geometry for hard disk use.
 * **Add In-Guest TRSDOS Commands to Section 7.4:**
   - `HDVMOUNT`: Mounts and configures hard disk partitions for drives `:4`–`:7`.
   - `DSKINFO`: Diagnostic tool displaying mounted container format (JV1, DiskDISK, Reed HDV), header offset (`dw_offset`), geometry, and write protection status.

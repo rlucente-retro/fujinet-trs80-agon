@@ -14,7 +14,7 @@
   3. *Mode 3 (Hybrid Operation):* Mix local SD, remote network, and high SRAM drives (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image, Drive `:4` mapped to high SRAM `MEMDISK`) with seamless cross-tier copying (`COPY`, `BACKUP`).
 - **Pre-Boot & In-DOS Tool Suites:**
   - *Quark MOS Pre-Boot Manager (`FNBOOT`):* Interactive visual browser to configure FujiNet host/device slots and local SD card images prior to OS launch.
-  - *MOS File Interchange Tools:* Native utilities (`*TRSDIR`, `*TRSEXT`, `*TRSADD`, `*TRSDEL`, `*TRSNEW`) bridging the Agon FAT32 filesystem and TRSDOS `.dsk` images.
+  - *MOS File Interchange & Disk Suite (`trs80`):* Unified Toolshed-style native MOS command utility (`*trs80 <cmd>`) bridging the Agon FAT32 filesystem and TRSDOS disk containers (`dir`, `copy`, `delete`, `rename`, `format`, `check`, `free`, `dump`, `attr`) across multiple formats (`DiskDISK`, `JV1`, `JV3`, `HDV`).
   - *Native TRSDOS Utilities:* Full <= 8-character suite (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`).
 - **Host / Coprocessor:** `fujinet-firmware` (`BUILD_COCO` DriveWire Bus over Serial / BoIP)  
 - **Toolchain:** Zilog ZDS II (`ez80asm.exe` via Wine) matching `trs-os-zds` (with verified native AgonDev parity)  
@@ -93,7 +93,7 @@ The primary objective of this project is to provide a complete network mass stor
    * *Mode 3 (Hybrid Operation):* Mix local SD, remote network, and high SRAM drives (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image, Drive `:4` mapped to high SRAM `MEMDISK`) with seamless cross-tier copying (`COPY`, `BACKUP`).
 5. **Pre-Boot & In-DOS Tool Suites:**
    * Provide **`FNBOOT`** in Quark MOS: an interactive visual launcher to browse TNFS repositories, mount local/remote images, and boot.
-   * Provide native MOS file tools (`*TRSDIR`, `*TRSEXT`, `*TRSADD`, `*TRSDEL`, `*TRSNEW`) to transfer files between the Agon FAT32 filesystem and TRSDOS `.dsk` disk images without a PC.
+   * Provide a unified native MOS tool suite **`*trs80`** (modeled directly on Toolshed's `os9`/`decb`) to manage, inspect, extract, inject, format, and audit TRSDOS disk images across multiple formats (`DiskDISK`, `JV1`, `JV3`, `HDV`) without a PC.
    * Provide a complete suite of native TRSDOS in-DOS utilities (`FN*.CMD`, `DRVMAP.CMD`, `SDMOUNT.CMD`).
 6. **Dual Physical Transport Support (Direct Serial & Wi-Fi Streaming):**
    * *Direct Serial Link (Olimex MOD-USB-RS232):* Point-to-point hardware connection inherently active at reset; boots directly from MOS via `*FNBOOT` or `*OSboot TRSDOS.bin`.
@@ -874,28 +874,61 @@ TRSDOS operates completely independently of network topology:
 * All `FN*.CMD` utilities communicate over standard serial `OP_FUJI` (0xE2) transactions to interrogate and configure the **remote FujiNet peripheral device**, not the local Agon hardware.
 * Network properties reported by `FNSTATUS` belong to the **FujiNet device itself** (its own network interface used to reach TNFS servers or its web config) or the host PC running FujiNet-PC.
 
-### 7.2 Pre-Boot Quark MOS Utility Suite (`FNBOOT` & MOS File Interchange Tools)
+### 7.2 Pre-Boot Quark MOS Utility Suite (`FNBOOT` & `trs80` Disk Suite)
 
 Executed from the Quark MOS `*` prompt before launching TRSDOS:
 
 1. **`FNBOOT` (Visual Storage Manager & Launcher):**
    * Full-screen interactive MOS application.
-   * Scans FujiNet adapter status and enumerates TNFS host slots.
+   * Scans FujiNet adapter status and enumerates TNFS host slots over UART1.
    * Browses remote TNFS directories and local Agon SD card `.dsk` files.
    * Assigns disk images to TRSDOS Logical Drives `:0` through `:7` (Mode 1, Mode 2, or Mode 3).
    * Sets VDP font/colors, stages lean 64 KB `TRSDOS.bin`, remaps SRAM, and boots.
    * **Boot Mailbox Staging & IPL Simplification:** Resolves FAT32 cluster addresses and FujiNet slot indices in Quark MOS, writing the staged boot mailbox (`drv_target_table` and `sddvr_base_lba`) directly into fixed lowcore SRAM before jumping to `TRSDOS.bin`. This allows `ipl-BIOS.s` to be simplified into a lean, deterministic dispatcher without lowcore probing loops, timeouts, or retry state machines.
-2. **`*TRSDIR <image.dsk>`:**
-   * Reads Directory Cylinder (Track 17) of `<image.dsk>` on the FAT32 SD card.
-   * Formats and prints file directory, extensions, sizes, and granule allocation.
-3. **`*TRSEXT <image.dsk> <trsdos_file> [fat_file]`:**
-   * Extracts a file from inside `<image.dsk>` to a standalone file on the Agon FAT32 filesystem (with optional CRLF translation).
-4. **`*TRSADD <image.dsk> <fat_file> [trsdos_file]`:**
-   * Injects a FAT32 file into `<image.dsk>`, updating the GAT (allocation bitmap), HIT (hash table), and FXDE (directory record).
-5. **`*TRSDEL <image.dsk> <trsdos_file>`:**
-   * Deletes a file inside `<image.dsk>` and frees its granules in the GAT.
-6. **`*TRSNEW <image.dsk> [cyls] [sides] [density]`:**
-   * Formats a brand new, empty LS-DOS 6.3 disk image directly on the FAT32 card.
+
+2. **`trs80` (Unified Toolshed-Style MOS Disk & File Utility Suite):**
+   Rather than fragmenting functionality across disparate single-purpose star commands, the MOS pre-boot environment provides a single, comprehensive, multicall CLI executive **`*trs80`** (aliased to `*trs` in `/mos/`), modeled directly on the proven architecture of **Toolshed's `os9` and `decb`** commands:
+   * **Unified Path Addressing (Toolshed Comma Syntax):**
+     Disk image paths and guest files are specified using standard Toolshed comma notation:
+     `<host_image_path>,<path_inside_image>`
+     * `image.dsk,` - Refers to the root directory of the virtual disk image.
+     * `image.dsk,HELLO/CMD` - Refers to a specific file inside the virtual disk image.
+     * `image.dsk,@` - Raw disk access mode (for sector-level operations).
+     * `hostfile.txt` - No comma indicates a native file residing on the Agon FAT32 filesystem.
+   * **Comprehensive Subcommand Suite:**
+     * `*trs80 dir <image.dsk>[,<pattern>] [-e] [-a] [-s]`  
+       Displays directory contents with file attributes, ERN record counts, EOF byte sizes, and granule allocations. `-e` provides extended extent details; `-a` includes hidden/system files; `-s` prints summary statistics.
+     * `*trs80 copy [-l] [-r] <src> <dst>`  
+       Bidirectional file transfer engine:
+       * Extract: `*trs80 copy image.dsk,ELIZA/BAS eliza.bas` (from virtual disk to native FAT32).
+       * Inject: `*trs80 copy myprog.cmd image.dsk,MYPROG/CMD` (from native FAT32 into virtual disk).
+       * Clone: `*trs80 copy disk1.dsk,FILE disk2.dsk,FILE` (between two virtual disk images).
+       * Options: `-l` performs automatic line-ending conversion (CR <-> CRLF / ETX); `-r` replaces existing destination files without prompting.
+     * `*trs80 delete <image.dsk>,<filename>`  
+       Deletes a file, marks its directory entry free, zeroes its HIT hash, and reclaims all allocated granules in the GAT bitmap.
+     * `*trs80 rename <image.dsk>,<old_name> <new_name>`  
+       Renames a file within the virtual disk image, updating its primary name, extension, and HIT hash value.
+     * `*trs80 format <image.dsk> [-f format] [-c cyls] [-s sides] [-v volname]`  
+       Creates and formats a brand new, empty TRSDOS disk image on the Agon FAT32 card. Writes Sector 0 (DCT parameters), directory Track 17 (clean GAT, zeroed HIT, initialized FXDEs), and zero-fills remaining sectors. Because it is written sequentially in one continuous pass, the resulting file is **guaranteed 100% contiguous on FAT32**, ensuring optimal hardware SPI0 block I/O.
+     * `*trs80 check <image.dsk>`  
+       Performs exhaustive structural audits of the disk image: validates Sector 0 DCT headers, checks GAT allocation bitmaps against all file directory extents, verifies HIT hash consistency, audits system overlays (SYS0–SYS13), and reports orphaned or double-allocated granules (parity with `tools/audit_filesystem.py`).
+     * `*trs80 free <image.dsk>`  
+       Displays volume name, total cylinder/head/sector capacity, allocated granules, free granules, and available free space in kilobytes.
+     * `*trs80 dump <image.dsk>[,<filename>] [-s sector]`  
+       Emits formatted hexadecimal and ASCII dumps of arbitrary physical sectors or individual file extents.
+     * `*trs80 attr <image.dsk>,<filename> [permissions]`  
+       Inspects or updates file access attributes, update flags, and protection passwords.
+   * **Universal Container Abstraction Layer:**
+     The `trs80` utility automatically identifies and abstracts the underlying container format:
+     * **`DiskDISK` (.dsk):** Detects `"DiskDISK"` ASCII signature; parses geometry from the 256-byte header; applies `+256` byte offset to sector addressing.
+     * **`JV1` (.dsk / .jv1):** Linear raw sector stream with zero header offset (`LSN * 256`); derives geometry dynamically from directory Track 17 and file length.
+     * **`JV3` (.dsk / .jv3):** Indexed sector descriptor table (`0x2200` bytes); translates logical `(cylinder, side, sector)` requests to physical byte offsets via the sector descriptor array on the fly.
+     * **`HDV` (.hdv):** Hard disk volume container; supports Matthew Reed HDV (256-byte header) and flat HDV images from 5 MB to 40 MB.
+   * **eZ80 24-Bit ADL Mode Feasibility & Resource Budget:**
+     * **Address Space:** Executing under Quark MOS in 24-bit ADL mode at `0x040000`, the application has direct access to ~448 KiB of contiguous linear RAM.
+     * **Code Footprint:** Implemented in C and compiled with `ez80-none-elf-clang` (`agondev`), the unified binary occupies ~35–50 KiB (less than 12% of available RAM).
+     * **Buffer Allocation:** Allocates ample 32 KiB copy buffers, full Track 17 directory caches (4 KiB), and multi-sector buffers with zero memory pressure.
+     * **Execution Speed:** Operating at 18.432 MHz with direct FatFS microSD block operations, directory queries and multi-sector file copies complete in milliseconds.
 
 ### 7.3 Eight-Character Basename Compliance & Command Summary
 
@@ -1104,7 +1137,7 @@ STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:3 / Slots
 +-------------------------------------------------------------------------------+
 | PHASE 4: Pre-Boot & In-DOS Utility Suites                                     |
 | - Implement FNBOOT visual manager in Quark MOS.                               |
-| - Implement MOS file interchange tools (*TRSDIR, *TRSEXT, *TRSADD, *TRSNEW).  |
+| - Implement unified Toolshed-style MOS disk suite trs80 (*trs80 dir, copy, etc.). |
 | - Implement FN*.CMD suite: FNSTATUS, FNHOSTS, FNMOUNT, FNDEVS, FNSETDEV, etc. |
 | - Implement DRVMAP.CMD (unified drive mapping) and SDMOUNT.CMD.               |
 +-------------------------------------------------------------------------------+
@@ -1179,7 +1212,7 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-16a**| Storage Router Dispatch (`drv_target_table`) | Run `DIR :1` with `drv_target_table + 1` = 1 (DriveWire) and active `DCT1$`. | Dispatches OP_READEX for virtual slot 1 via UART1; returns GAT error cleanly when slot is empty. | **PASS (Phase 2 Verified)** |
 | **TC-16b**| Local MicroSD Driver Init & Bounds Check | Run `DIR :1` with `drv_target_table + 1` = 0 (Local SD) and active `DCT1$`. | Hardware SPI0 initializes (`sddvr_inited == 1` at `0x00F400`); checks Base LBA and rejects cleanly with GAT error. | **PASS (Phase 2 Verified)** |
 | **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. | Pending Phase 4 (Driver Verified in Phase 2) |
-| **TC-18** | MOS File Tools Verification | In MOS, run `*TRSDIR`, `*TRSEXT`, `*TRSADD` on test image. | Files extracted and added match binary SHA-256 hashes. | Pending Phase 4 |
+| **TC-18** | Toolshed-Style MOS Suite (`trs80`) | In MOS, execute `*trs80 dir`, `*trs80 copy`, `*trs80 format`, and `*trs80 check` across JV1, DiskDISK, and JV3 images. | Sector operations, file extraction, injection, and format verify with 100% binary parity against Python reference tooling. | Pending Phase 4 |
 | **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. | Pending Phase 4 (Driver Verified in Phase 2) |
 | **TC-20** | Expanded RAM & `MEMDISK` | Mount RAM disk via `MEMDISK :4`; execute directory and file copy. | Sectors read/write via eZ80 24-bit LDIR in 27.7 µs; @BANK switches banks cleanly. | Pending Phase 8 |
 
