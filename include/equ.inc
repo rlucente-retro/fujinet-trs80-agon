@@ -165,7 +165,7 @@ PB_ALT2         EQU     09Dh    ; Port B Alternate Register 2
 SPI_BRG_L       EQU     0B8h    ; SPI Baud Rate Generator Low Byte
 SPI_BRG_H       EQU     0B9h    ; SPI Baud Rate Generator High Byte
 SPI_CTL         EQU     0BAh    ; SPI Control Register
-SPI_SR          EQU     0BDh    ; SPI Status Register
+SPI_SR          EQU     0BBh    ; SPI Status Register
 SPI_RBR         EQU     0BCh    ; SPI Receive Buffer Register
 SPI_TSR         EQU     0BCh    ; SPI Transmit Shift Register
 

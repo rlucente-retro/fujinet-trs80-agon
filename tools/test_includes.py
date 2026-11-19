@@ -106,7 +106,7 @@ class TestAssemblyIncludes(unittest.TestCase):
         self.assertEqual(equates.get("PB_ALT1"), 0x9C)
         self.assertEqual(equates.get("PB_ALT2"), 0x9D)
         self.assertEqual(equates.get("SPI_CTL"), 0xBA)
-        self.assertEqual(equates.get("SPI_SR"), 0xBD)
+        self.assertEqual(equates.get("SPI_SR"), 0xBB)
         self.assertEqual(equates.get("SPI_RBR"), 0xBC)
         self.assertEqual(equates.get("SPI_TSR"), 0xBC)
         self.assertEqual(equates.get("CMD17_READ_BLOCK"), 0x51)

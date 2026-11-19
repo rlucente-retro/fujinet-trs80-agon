@@ -69,7 +69,7 @@ sdmnt_is_paren:
 
     ; Parse drive token before '(' (e.g. ":1" or "1")
     ld      de, arg_buf
-    call    fuji_parse_arg
+    call    parse_paren_val
     jr      c, sdmnt_enter_paren
     ld      de, arg_buf
     call    fuji_parse_slot
@@ -92,9 +92,11 @@ sdmnt_fnd_op:
     jr      sdmnt_fnd_op
 sdmnt_past_op:
     inc     hl
+    ld      (cmd_ptr), hl
 
     ; Loop through parameters inside (...)
 sdmnt_kw_loop:
+    ld      hl, (cmd_ptr)
     call    skip_spaces_commas
     cp      ')'
     jp      z, sdmnt_eval_params
@@ -131,6 +133,7 @@ sdmnt_get_kw:
 sdmnt_kw_term:
     xor     a
     ld      (de), a             ; Null-terminate standalone keyword
+    ld      (cmd_ptr), hl       ; Save command-line pointer across dispatch
     jr      sdmnt_dispatch_kw
 
 sdmnt_kw_val:
@@ -139,7 +142,8 @@ sdmnt_kw_val:
     inc     hl                  ; Skip '='
     call    skip_spaces
     ld      de, val_buf
-    call    fuji_parse_arg
+    call    parse_paren_val
+    ld      (cmd_ptr), hl       ; Save command-line pointer across dispatch
     ; Fall through to dispatch
 
 sdmnt_dispatch_kw:
@@ -232,16 +236,14 @@ skw_set_mode:
     jr      z, skw_mode_ro
     cp      '3'
     jr      z, skw_mode_rw
+    call    to_upper
     cp      'R'
-    jr      nz, sdmnt_bad_mode
+    jp      nz, sdmnt_bad_mode
     ld      a, (val_buf+1)
+    call    to_upper
     cp      'O'
     jr      z, skw_mode_ro
-    cp      'o'
-    jr      z, skw_mode_ro
     cp      'W'
-    jr      z, skw_mode_rw
-    cp      'w'
     jr      z, skw_mode_rw
     jp      sdmnt_bad_mode
 skw_mode_ro:
@@ -307,16 +309,14 @@ sdmnt_parse_positional:
     jr      z, pos_mode_ro
     cp      '3'
     jr      z, pos_mode_rw
+    call    to_upper
     cp      'R'
-    jr      nz, sdmnt_bad_mode
+    jp      nz, sdmnt_bad_mode
     ld      a, (arg_buf+1)
+    call    to_upper
     cp      'O'
     jr      z, pos_mode_ro
-    cp      'o'
-    jr      z, pos_mode_ro
     cp      'W'
-    jr      z, pos_mode_rw
-    cp      'w'
     jr      z, pos_mode_rw
     jp      sdmnt_bad_mode
 pos_mode_ro:
@@ -365,10 +365,11 @@ sdmnt_idx_loop:
     jr      c, sdmnt_idx_next
 
     pop     bc
-    push    bc
     ld      a, (match_idx)
     cp      b
     jr      z, sdmnt_match_found
+    inc     b
+    jr      sdmnt_idx_loop
 
 sdmnt_idx_next:
     pop     bc
@@ -641,7 +642,11 @@ sdmnt_menu_mode:
     call    map_stream_init
     jr      c, sdmnt_menu_no_map
 
-    ld      hl, msg_menu_hdr
+    ld      hl, msg_menu_hdr1
+    _DSPLY
+    ld      hl, msg_menu_hdr2
+    _DSPLY
+    ld      hl, msg_menu_hdr3
     _DSPLY
 
     ld      b, 1
@@ -700,24 +705,26 @@ sdmnt_menu_skip:
 
 sdmnt_menu_done:
     pop     bc
-    ld      hl, msg_menu_footer
+    ld      hl, msg_menu_ftr1
+    _DSPLY
+    ld      hl, msg_menu_ftr2
     _DSPLY
     _EXIT
 
 sdmnt_menu_no_map:
     ld      hl, msg_no_map_active
     _DSPLY
-    ld      hl, msg_usage
-    _DSPLY
-    _EXIT
+    jr      sdmnt_usage
 
 sdmnt_usage:
-    ld      hl, msg_usage
-    _DSPLY
-    _EXIT
-
 sdmnt_usage_drv:
-    ld      hl, msg_usage
+    ld      hl, msg_usage1
+    _DSPLY
+    ld      hl, msg_usage2
+    _DSPLY
+    ld      hl, msg_usage3
+    _DSPLY
+    ld      hl, msg_usage4
     _DSPLY
     _EXIT
 
@@ -765,6 +772,88 @@ to_upper:
     cp      'z' + 1
     ret     nc
     sub     20h
+    ret
+
+; Parse parameter value token from HL into buffer DE.
+; Supports quoted ("..." / '...') and unquoted tokens.
+; Unquoted tokens stop at space, tab, comma, '(', ')', CR, or null.
+; Exit: Carry clear (NC) = token extracted, HL advanced past token
+;       Carry set (C)    = no token found
+parse_paren_val:
+    push    bc
+ppv_skip:
+    ld      a, (hl)
+    cp      CR
+    jr      z, ppv_none
+    or      a
+    jr      z, ppv_none
+    cp      ')'
+    jr      z, ppv_none
+    cp      '('
+    jr      z, ppv_none
+    cp      ' '
+    jr      z, ppv_inc
+    cp      09h
+    jr      z, ppv_inc
+    cp      ','
+    jr      z, ppv_inc
+    jr      ppv_chk_q
+ppv_inc:
+    inc     hl
+    jr      ppv_skip
+ppv_none:
+    xor     a
+    ld      (de), a
+    pop     bc
+    scf
+    ret
+ppv_chk_q:
+    cp      '"'
+    jr      z, ppv_quoted
+    cp      27h
+    jr      z, ppv_quoted
+ppv_unq_loop:
+    ld      a, (hl)
+    cp      CR
+    jr      z, ppv_done
+    or      a
+    jr      z, ppv_done
+    cp      ' '
+    jr      z, ppv_done
+    cp      09h
+    jr      z, ppv_done
+    cp      ','
+    jr      z, ppv_done
+    cp      ')'
+    jr      z, ppv_done
+    cp      '('
+    jr      z, ppv_done
+    ld      (de), a
+    inc     hl
+    inc     de
+    jr      ppv_unq_loop
+ppv_quoted:
+    ld      c, a
+    inc     hl
+ppv_q_loop:
+    ld      a, (hl)
+    cp      CR
+    jr      z, ppv_done
+    or      a
+    jr      z, ppv_done
+    cp      c
+    jr      z, ppv_q_close
+    ld      (de), a
+    inc     hl
+    inc     de
+    jr      ppv_q_loop
+ppv_q_close:
+    inc     hl
+ppv_done:
+    xor     a
+    ld      (de), a
+    pop     bc
+    or      a
     ret
 
 parse_dec16:
@@ -1016,11 +1105,10 @@ print_hex32:
 ; -----------------------------------------------------------------------------
 ; Messages & Parameter Keywords
 ; -----------------------------------------------------------------------------
-msg_usage:
-    DB  "Usage: SDMOUNT :<drv> (IMAGE=\"<path>\", MODE=RW)", CR
-    DB  "   or: SDMOUNT (DRV=<drv>, FILE=\"<path>\", MODE=RW)", CR
-    DB  "   or: SDMOUNT (D=<drv>, I=<index>)", CR
-    DB  "   or: SDMOUNT (Menu)", CR, 03h
+msg_usage1:         DB  "Usage: SDMOUNT :<drv> (IMAGE=\"<path>\", MODE=RW)", CR
+msg_usage2:         DB  "   or: SDMOUNT (DRV=<drv>, FILE=\"<path>\", MODE=RW)", CR
+msg_usage3:         DB  "   or: SDMOUNT (D=<drv>, I=<index>)", CR
+msg_usage4:         DB  "   or: SDMOUNT (Menu)", CR
 
 msg_need_drv:       DB  "Error: Drive must be specified (e.g. :1 or DRV=1)", CR, 03h
 msg_bad_drv:        DB  "Error: Drive must be 0 to 7", CR, 03h
@@ -1040,14 +1128,12 @@ msg_mode_rw:        DB  "RW", 03h
 msg_sfx:            DB  ").", CR, 03h
 msg_unm_done:       DB  " unmounted.", CR, 03h
 
-msg_menu_hdr:
-    DB  "Available MicroSD Disk Images:", CR
-    DB  " #   Base LBA    Path", CR
-    DB  "--- ----------- ----------------------------------------", CR, 03h
+msg_menu_hdr1:      DB  "Available MicroSD Disk Images:", CR
+msg_menu_hdr2:      DB  " #   Base LBA    Path", CR
+msg_menu_hdr3:      DB  "--- ----------- ----------------------------------------", CR
 
-msg_menu_footer:
-    DB  "--------------------------------------------------------", CR
-    DB  "To mount: SDMOUNT :<drv> (I=<#>) or SDMOUNT :<drv> (IMAGE=\"<path>\")", CR, 03h
+msg_menu_ftr1:      DB  "--------------------------------------------------------", CR
+msg_menu_ftr2:      DB  "To mount: SDMOUNT :<drv> (I=<#>) or SDMOUNT :<drv> (IMAGE=\"<path>\")", CR
 
 msg_press_key:      DB  "[Press any key for next page...]", 03h
 msg_hex_pfx:        DB  "  0x", 03h
@@ -1077,6 +1163,7 @@ kw_list:            DB  "LIST", 0
 ; -----------------------------------------------------------------------------
 ; Dynamic Buffers
 ; -----------------------------------------------------------------------------
+cmd_ptr:            DW  0
 target_drv:         DB  0
 target_mode:        DB  0
 target_dct:         DW  0

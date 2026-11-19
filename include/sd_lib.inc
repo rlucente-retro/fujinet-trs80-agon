@@ -148,6 +148,11 @@ sd_cmd_tx_loop:
     call    sd_tx_rx
     djnz    sd_cmd_tx_loop
 
+    ; Some SPI emulators (e.g. fab-agon-emulator) return R1 on the 6th (CRC) byte.
+    ; On real SD hardware, byte 6 returns 0xFF (bit 7 = 1) and R1 follows on kick.
+    bit     7, a
+    jr      z, sd_got_r1
+
     ; Wait for R1 response (bit 7 must be 0)
     ld      b, 255
 sd_wait_r1_loop:
@@ -348,7 +353,11 @@ mgl_start_line:
     ld      b, 0                ; Char count
 
 mgl_char_loop:
+    push    bc
+    push    de
     call    map_get_char
+    pop     de
+    pop     bc
     jr      c, mgl_eof_check
 
     ld      c, a                ; Save char in C
@@ -554,11 +563,11 @@ mshl_loop:
 ; ------------------------------------------------------------------------------
 
 ; Compare A and B case-insensitively (ASCII A-Z, a-z)
-; Returns Z flag if equal, NZ if different
+; Returns Z flag if equal, NZ if different. Preserves BC, DE, HL.
+; Note: On Z match, A is zero iff both input chars were zero.
 case_cmp:
     cp      b
     ret     z
-    push    af
     push    bc
     cp      'a'
     jr      c, cc_a_done
@@ -576,7 +585,6 @@ cc_a_done:
 cc_b_done:
     cp      c
     pop     bc
-    pop     af
     ret
 
 ; Compute length of null-terminated string at HL -> A (and B)
@@ -629,6 +637,13 @@ str_suffix_match:
     push    hl
     push    de
 
+    ; Optional leading '/' normalization on query DE
+    ld      a, (de)
+    cp      '/'
+    jr      nz, ssm_no_lead_slash
+    inc     de
+ssm_no_lead_slash:
+
     ; Calculate length of HL (str1)
     call    str_len
     ld      c, a                ; C = len(HL)
@@ -651,27 +666,23 @@ str_suffix_match:
     ; Calculate offset: diff = C - B
     ld      a, c
     sub     b                   ; A = diff
-    push    hl
+    push    de                  ; Save normalized DE
     ld      e, a
     ld      d, 0
     add     hl, de              ; HL -> suffix in str1
+    pop     de                  ; Restore normalized DE
 
     ; Check if preceding char is '/'
     dec     hl
     ld      a, (hl)
     inc     hl
     cp      '/'
-    jr      nz, ssm_diff_pop
+    jr      nz, ssm_diff
 
     ; Suffix is preceded by '/': compare suffix with DE
-    pop     de                  ; Discard saved HL from push hl
-    pop     de                  ; DE = query string
-    push    de
     call    str_cmp_ci
     jr      ssm_exit
 
-ssm_diff_pop:
-    pop     hl
 ssm_diff:
     pop     de
     pop     hl

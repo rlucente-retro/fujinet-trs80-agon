@@ -21,6 +21,7 @@ start:
     ld      de, arg_lba
     call    fuji_parse_arg
     jr      c, setmap_usage
+    ld      (cmd_ptr), hl       ; Save command-line pointer for optional [len]
 
     ; Parse <lba> argument
     ld      de, arg_lba
@@ -51,6 +52,7 @@ start:
     ld      (sddvr_map_len), hl
 
     ; Parse optional [len]
+    ld      hl, (cmd_ptr)       ; Restore command-line pointer
     ld      de, arg_len
     call    fuji_parse_arg
     jr      c, setmap_disp
@@ -346,8 +348,10 @@ print_hex32:
     pop     hl
     ret
 
-; Print 16-bit integer in HL as unsigned decimal
+; Print 16-bit integer in HL as unsigned decimal (suppressing leading zeros)
 print_dec16:
+    xor     a
+    ld      (pd16_nz), a
     ld      bc, -10000
     call    pd16_digit
     ld      bc, -1000
@@ -368,6 +372,18 @@ pd16_sub:
     add     hl, bc
     jr      c, pd16_sub
     sbc     hl, bc
+    cp      '0'
+    jr      nz, pd16_emit
+    ld      d, a
+    ld      a, (pd16_nz)
+    or      a
+    ret     z                   ; Suppress leading zero
+    ld      a, d
+pd16_emit:
+    ld      d, a
+    ld      a, 1
+    ld      (pd16_nz), a
+    ld      a, d
     call    fuji_putc
     ret
 
@@ -384,6 +400,8 @@ msg_sfx:        DB  " bytes.", CR, 03h
 ; -----------------------------------------------------------------------------
 ; Buffers
 ; -----------------------------------------------------------------------------
+cmd_ptr:        DW  0
+pd16_nz:        DB  0
 target_lba:     DS  4
 tmp32:          DS  4
 arg_lba:        DS  32

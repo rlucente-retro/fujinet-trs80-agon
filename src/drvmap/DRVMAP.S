@@ -18,7 +18,11 @@ start:
     call    fuji_init
 
     ; Display table header
-    ld      hl, msg_hdr
+    ld      hl, msg_hdr1
+    _DSPLY
+    ld      hl, msg_hdr2
+    _DSPLY
+    ld      hl, msg_hdr3
     _DSPLY
 
     ; Iterate through logical drives :0 to :7
@@ -307,10 +311,9 @@ print_hex32:
 ; -----------------------------------------------------------------------------
 ; Display Labels & Formatting Strings
 ; -----------------------------------------------------------------------------
-msg_hdr:
-    DB  "TRSDOS Unified Drive Mapping:", CR
-    DB  "Drive Target     Mode Format   Details", CR
-    DB  "----- ---------- ---- -------- ----------------------------------------", CR, 03h
+msg_hdr1:       DB  "TRSDOS Unified Drive Mapping:", CR
+msg_hdr2:       DB  "Drive Target     Mode Format   Details", CR
+msg_hdr3:       DB  "----- ---------- ---- -------- ----------------------------------------", CR
 
 msg_div:
     DB  "------------------------------------------------------------------------", CR, 03h
