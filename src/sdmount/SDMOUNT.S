@@ -483,6 +483,36 @@ sdmnt_do_mount:
     add     hl, de
     ld      (hl), DRV_TARGET_SD
 
+    ; Probe physical block 0 of image to detect DiskDISK header (+256B offset) vs JV1 (0)
+    ld      hl, target_lba
+    ld      de, map_block_buf
+    call    sd_read_block
+    jr      c, sdmnt_off_default
+
+    ld      hl, map_block_buf
+    ld      de, sd_diskdisk_magic
+    ld      b, 8
+sdmnt_chk_dd:
+    ld      a, (de)
+    cp      (hl)
+    jr      nz, sdmnt_off_jv1
+    inc     hl
+    inc     de
+    djnz    sdmnt_chk_dd
+
+sdmnt_off_default:
+    ld      c, 1                ; DiskDISK container (+1 sector offset)
+    jr      sdmnt_set_off
+sdmnt_off_jv1:
+    ld      c, 0                ; Raw JV1 container (0 offset)
+sdmnt_set_off:
+    ld      a, (target_drv)
+    ld      e, a
+    ld      d, 0
+    ld      hl, dw_offset
+    add     hl, de
+    ld      (hl), c
+
     ; Calculate DCT address
     ld      a, (target_drv)
     or      a
@@ -1159,6 +1189,7 @@ kw_unmount:         DB  "UNMOUNT", 0
 kw_zero:            DB  "0", 0
 kw_menu:            DB  "MENU", 0
 kw_list:            DB  "LIST", 0
+sd_diskdisk_magic:  DB  "DiskDISK"
 
 ; -----------------------------------------------------------------------------
 ; Dynamic Buffers
