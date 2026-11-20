@@ -35,9 +35,16 @@ UTILS_HEX    := $(patsubst %.obj,%.hex,$(UTILS_OBJ))
 UTILS_BIN    := $(patsubst %.obj,%.bin,$(UTILS_OBJ))
 UTILS_CMD    := $(patsubst %.obj,%.CMD,$(UTILS_OBJ))
 
-.PHONY: all utils test test-packager test-includes inject audit-dsk check-env clean clean-all help
+.PHONY: all utils mos test test-packager test-includes test-trs80 inject audit-dsk check-env clean clean-all help
 
 all: check-env utils
+
+# ------------------------------------------------------------------------------
+# Quark MOS Utilities Build Target (eZ80 ADL Mode via agondev)
+# ------------------------------------------------------------------------------
+mos:
+	@echo "==> Building Quark MOS *trs80 utility (bin/trs80.bin)..."
+	@$(MAKE) -C src/mos/trs80 all
 
 # ------------------------------------------------------------------------------
 # Command Utilities Build Target
@@ -73,7 +80,7 @@ src/%.CMD: src/%.bin
 # ------------------------------------------------------------------------------
 # Test Suites Target
 # ------------------------------------------------------------------------------
-test: test-packager test-includes
+test: test-packager test-includes test-trs80
 
 test-packager:
 	@echo "==> Running CMD packager unit tests..."
@@ -82,6 +89,11 @@ test-packager:
 test-includes:
 	@echo "==> Running shared assembly include equates test..."
 	@$(PYTHON) tools/test_includes.py
+
+test-trs80:
+	@echo "==> Running *trs80 MOS utility parity & container tests..."
+	@$(MAKE) -C src/mos/trs80 host > /dev/null
+	@$(PYTHON) tools/test_trs80_mos.py
 
 # ------------------------------------------------------------------------------
 # Disk Image Injection & Audit Targets

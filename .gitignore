@@ -18,6 +18,7 @@ venv/
 *.o
 *.cmd
 *.CMD
+src/mos/*/obj/
 
 # Scratch files
 scratch/
