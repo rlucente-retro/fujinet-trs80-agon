@@ -47,6 +47,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 * **Phase 1 Implementation & Technical Explanation:** [`PHASE1-IMPLEMENTATION-EXPLANATION.md`](PHASE1-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 1 deliverables, including lean kernel architecture (~64 KB), DriveWire `OP_READEX` network IPL, VDP cursor suppression, display loop hang resolution, and authentic Model 4 Break & Ctrl-C handling.
 * **Phase 2 Implementation & Technical Explanation:** [`PHASE2-IMPLEMENTATION-EXPLANATION.md`](PHASE2-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 2 deliverables, including the multi-tier storage router in `driver-FDCDVR.S`, modular DriveWire driver `driver-DWDVR.s`, local microSD SPI0 block driver `driver-SDDVR.s`, memory map budgeting, and empirical verification.
 * **Phase 3 Implementation & Technical Explanation:** [`PHASE3-IMPLEMENTATION-EXPLANATION.md`](PHASE3-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 3 deliverables, including the authentic LS-DOS `.CMD` packager (`tools/bin_to_cmd.py`), shared assembly includes and equates (`include/`), minimal test harness (`HELLO.S`), disk injection tool (`tools/inject_file_to_dsk.py`), automated `Makefile` pipeline, and live emulation qualification.
+* **Phase 4 Implementation & Technical Explanation:** [`PHASE4-IMPLEMENTATION-EXPLANATION.md`](PHASE4-IMPLEMENTATION-EXPLANATION.md) — Comprehensive technical explanation of Phase 4 deliverables, including the 9 `FN*.CMD` utilities, `SDMOUNT`/`DRVMAP`/`SETMAP` with SPI0 `sdmap.txt` discovery, the unified `*trs80` MOS disk suite, the `FNBOOT` visual pre-boot manager & mailbox stager, Pure Local SD booting, and writable Local MicroSD `CMD17`+`CMD24` Read-Modify-Write.
 * **Comprehensive Architectural & Integration Specification:** [`FUJINET-TRS80-INTEGRATION-PLAN.md`](FUJINET-TRS80-INTEGRATION-PLAN.md) — Authoritative technical specification covering the three-layer execution model, boot chain, wire protocols, assembly driver modifications, local SD card block drivers, the native TRSDOS/MOS utility suites, hardware constraints, and phased implementation milestones.
 * **Disk & Hard Drive Image Format Analysis:** [`DISK-IMAGE-FORMAT-ANALYSIS.md`](DISK-IMAGE-FORMAT-ANALYSIS.md) — Binary format specifications and addressing mechanics for JV1, DiskDISK, JV3, DMK, and Reed HDV images, detailing DriveWire compatibility and geometry extraction.
 * **Agon OSboot Bootstrap Loader:** [Shawn Sijnstra's OSboot](https://github.com/sijnstra/agon-projects/tree/main/OSboot) — MOS bootstrap utility for booting `TRSDOS.bin` while preserving UART1 streaming connections.
@@ -200,6 +201,7 @@ Standardized include files for developing authentic LS-DOS 6.x `.CMD` command ut
 * **[`include/equ.inc`](include/equ.inc):** Lowcore memory map addresses (`INBUF$`, `DCT0$`–`DCT7$`, `LDRV$`, `TIME$`, `DATE$`, `BUR$`, `BAR$`, `LBANK$`), Agon storage router dispatch table (`drv_target_table`, `sddvr_base_lba`), ASCII control codes, standard LS-DOS error codes (`LSERR_NONE` through `LSERR_SVC`), and eZ80 UART1 hardware registers.
 * **[`include/fujinet.inc`](include/fujinet.inc):** DriveWire and FujiNet bus protocol opcodes (`OP_FUJI`, `OP_READEX`, `OP_WRITE`, `OP_TIME`), transaction commands (`FUJI_CMD_POLL`, `FUJI_CMD_GET_ADAPTER_CFG`, `FUJI_CMD_GET_DEV_SLOTS`, `FUJI_CMD_GET_HOST_SLOTS`, `FUJI_CMD_MOUNT_IMAGE`, etc.), data structure field offsets (140-byte `AdapterConfig`, 256-byte Host Slot table, 38-byte Device Slot entries), and transaction status codes (`FUJI_STAT_OK = 0x01`).
 * **[`include/fuji_lib.inc`](include/fuji_lib.inc):** Modular assembly transaction library providing polled UART1 primitives (`fuji_init`, `fuji_flush`, `fuji_tx_byte`, `fuji_rx_byte`, `fuji_tx_bytes`, `fuji_rx_bytes`), three-phase `OP_FUJI` transaction engine (`fuji_poll`, `fuji_cmd`, `fuji_cmd_params`, `fuji_get_error`, `fuji_get_response`), and formatted console display helpers (`fuji_putc`, `fuji_newline`, `fuji_print_str`, `fuji_print_dec8`, `fuji_print_hex8`, `fuji_print_ipv4`, `fuji_print_mac`, `fuji_print_error`).
+* **[`include/sd_lib.inc`](include/sd_lib.inc):** Shared SPI0 raw 512-byte block reader (`CMD17`) and `sdmap.txt` stream parser used by `SDMOUNT` and `DRVMAP` to resolve paths and LBAs directly from the lowcore mailbox (`sddvr_map_lba` at `0xF428`).
 
 ---
 
@@ -214,23 +216,27 @@ The repository includes a standalone Python diagnostic and verification suite fo
 * **[`tools/inject_file_to_dsk.py`](tools/inject_file_to_dsk.py):** Injects host executable binaries into LS-DOS 6.x DiskDISK images, computing authentic HIT hashes, allocating granules from the GAT, freeing prior extents upon overwrite, and constructing 32-byte FPDE directory entries.
 * **[`tools/test_bin_to_cmd.py`](tools/test_bin_to_cmd.py):** Unit test and round-trip verification suite for `bin_to_cmd.py`.
 * **[`tools/test_includes.py`](tools/test_includes.py):** Parser and consistency test suite validating all equates, memory addresses, and data structures across `svc.inc`, `equ.inc`, and `fujinet.inc`.
+* **[`tools/test_trs80_mos.py`](tools/test_trs80_mos.py):** Automated parity and container test suite for the `*trs80` MOS utility (`DiskDISK`, `JV1`, `JV3`, `Reed HDV`, bidirectional copy, format, audit, and recursive map).
+* **[`tools/test_fnboot.py`](tools/test_fnboot.py):** Automated host test suite verifying `FNBOOT` `sdmap.txt` parsing, `fnboot.ini` loading, and binary lowcore mailbox staging in `TRSDOS.bin`.
 
 ---
 
 ## Build System & Toolchain Automation (`Makefile`)
 
-The repository provides an automated build system for assembling, linking, packaging, and deploying TRSDOS / LS-DOS 6.x load modules (`.CMD`) into virtual disk images:
+The repository provides an automated build system for assembling, linking, packaging, and deploying TRSDOS / LS-DOS 6.x load modules (`.CMD`) and native Quark/Console8 MOS utilities (`trs80.bin`, `fnboot.bin`):
 
 * **Prerequisites:**
   * Apple Game Porting Toolkit `wine64` or `wine`
   * Zilog ZDS II eZ80Acclaim! 5.3.5 compiler/assembler suite installed in Wine (`~/.wine/drive_c/Zilog/ZDSII_eZ80Acclaim!_5.3.5`)
+  * `agondev` (`ez80-none-elf-clang` toolchain) for building native MOS binaries (`src/mos/trs80`, `src/mos/fnboot`)
   * `hex2bin` (via Homebrew: `brew install hex2bin`)
   * Python 3.8+
 
 * **Available Targets:**
   * `make all` (default): Verifies toolchain environment and builds all command utilities under `src/`.
   * `make utils`: Assembles (`ez80asm.exe`), links (`eZ80link.exe`), converts to binary (`hex2bin`), and packages all `src/*/*.S` utilities into authentic LS-DOS `/CMD` load modules via `tools/bin_to_cmd.py`.
-  * `make test`: Executes all unit test suites (`tools/test_bin_to_cmd.py` and `tools/test_includes.py`).
+  * `make mos`: Builds native Quark/Console8 MOS binaries `bin/trs80.bin` and `bin/fnboot.bin` (eZ80 24-bit ADL @ `0x040000`, installed in `/bin/`).
+  * `make test`: Executes all 4 unit test suites (`test_bin_to_cmd.py`, `test_includes.py`, `test_trs80_mos.py`, and `test_fnboot.py`).
   * `make inject [DSK=/path/to/image.dsk]`: Automatically injects all built `.CMD` utilities into the specified target disk image and performs a full structural audit.
   * `make audit-dsk [DSK=/path/to/image.dsk]`: Runs the exhaustive filesystem integrity auditor (`tools/audit_filesystem.py`) against the target disk image.
   * `make check-env`: Validates that `wine64`, `hex2bin`, `ez80asm.exe`, and `python3` are correctly installed and discoverable.

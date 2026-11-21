@@ -1170,11 +1170,11 @@ STAGE 1: Stock Firmware Baseline & Read-Only Storage Proof (Drives :0-:3 / Slots
                                         |
                                         v
 +-------------------------------------------------------------------------------+
-| PHASE 4: Pre-Boot & In-DOS Utility Suites                                     |
-| - Implement FNBOOT visual manager in Quark MOS.                               |
-| - Implement unified Toolshed-style MOS disk suite trs80 (*trs80 dir, copy, etc.). |
+| PHASE 4: Pre-Boot & In-DOS Utility Suites [COMPLETED & QUALIFIED]             |
+| - Implement FNBOOT visual manager & mailbox stager in Quark/Console8 MOS.     |
+| - Implement unified Toolshed-style MOS disk suite trs80 (*trs80 dir, copy...).|
 | - Implement FN*.CMD suite: FNSTATUS, FNHOSTS, FNMOUNT, FNDEVS, FNSETDEV, etc. |
-| - Implement DRVMAP.CMD (unified drive mapping) and SDMOUNT.CMD.               |
+| - Implement DRVMAP.CMD, SDMOUNT.CMD, SETMAP.CMD, and SPI0 CMD24 RMW writes.   |
 +-------------------------------------------------------------------------------+
                                         |
                                         v
@@ -1233,11 +1233,11 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-06a**| Display Loop Stability | Run tight loop `10 PRINT "Hello, world! ": 20 GOTO 10: RUN` in BASIC. | Runs continuously without freezing; interrupts stay enabled via NOP in DODVR. | **PASS (Phase 1 Verified)** |
 | **TC-06b**| Break & Ctrl-C in BASIC | Press `<Break>` or `Ctrl-C` during loop execution in BASIC. | Cleanly halts with `Break in <line>` and returns to BASIC `Ready` (no DOS abort). | **PASS (Phase 1 Verified)** |
 | **TC-06c**| Boot Volume & FS Audit | Run `verify_disk_image.py` and `audit_filesystem.py` on boot image. | Validates DiskDISK header, Track 17 GAT/HIT, and SYS file extents with 0 errors. | **PASS (Phase 1 Verified)** |
-| **TC-07** | `FNSTATUS` Verification | Run `FNSTATUS` from TRSDOS Ready prompt. | Correctly parses and prints 140-byte adapter configuration via `@DSPLY`. | Pending Phase 4 |
-| **TC-08** | Host Table Management | Run `FNHOSTS` and `FNSETH 0 "tnfs.fujinet.online"`. | Displays 8 slots (256 bytes); updates and persists slot 0 without case distortion. | Pending Phase 4 |
-| **TC-09** | Device Table Query | Run `FNDEVS` from TRSDOS Ready prompt. | Correctly queries device slot table (152B for 4 slots in Stage 1; 304B for 8 slots in Stage 2). | Pending Phase 4 |
-| **TC-10** | Path Quoting Case Preservation | Run `FNSETDEV 0 0 1 "/disks/trs80/game.dsk"`. | Server mounts exact path without uppercase conversion (`/disks/...`, not `/DISKS/...`). | Pending Phase 4 |
-| **TC-11** | Live DCT Geometry Synchronization | Run `FNMNTIMG 1 1` on unmounted Drive `:1`. | Sector 0 read; DCT geometry populated; byte 0 changed to `0xC3`; `DIR :1` succeeds. | Pending Phase 4 |
+| **TC-07** | `FNSTATUS` Verification | Run `FNSTATUS` from TRSDOS Ready prompt. | Correctly parses and prints 140-byte adapter configuration via `@DSPLY`. | **PASS (Phase 4 Verified)** |
+| **TC-08** | Host Table Management | Run `FNHOSTS` and `FNSETH 0 "tnfs.fujinet.online"`. | Displays 8 slots (256 bytes); updates and persists slot 0 without case distortion. | **PASS (Phase 4 Verified)** |
+| **TC-09** | Device Table Query | Run `FNDEVS` from TRSDOS Ready prompt. | Correctly queries device slot table (152B for 4 slots in Stage 1; 304B for 8 slots in Stage 2). | **PASS (Phase 4 Verified)** |
+| **TC-10** | Path Quoting Case Preservation | Run `FNSETDEV 0 0 1 "/disks/trs80/game.dsk"`. | Server mounts exact path without uppercase conversion (`/disks/...`, not `/DISKS/...`). | **PASS (Phase 4 Verified)** |
+| **TC-11** | Live DCT Geometry Synchronization | Run `FNMNTIMG 1 1` on unmounted Drive `:1`. | Sector 0 read; DCT geometry populated; byte 0 changed to `0xC3`; `DIR :1` succeeds. | **PASS (Phase 4 Verified)** |
 | **TC-12** | Directory & File Execution | Run `DIR :0` and load executable (`RUN "TEST/CMD:0"`). | Directory displays files; executable loads and runs cleanly. | **PASS (Phase 1 Verified)** |
 | **TC-12a**| Authentic CMD Packaging & Execution | Build `HELLO.S`, package via `bin_to_cmd.py`, inject into `boot_volume.dsk`, execute `HELLO` from LS-DOS prompt. | Load module parsed via `@LOAD`; executes at `0x2600`; clears screen via `@CLS`; prints banner via `@DSPLY`; exits cleanly via `@EXIT` to LS-DOS prompt. | **PASS (Phase 3 Verified)** |
 | **TC-13** | Timer 1 Clock Stability | Perform multi-sector file load (>= 64 sectors). | System time-of-day clock does not drift by > 1 tick during transfer. | Pending Phase 5 |
@@ -1246,9 +1246,9 @@ STAGE 2: Patched Firmware Expansion & Writable Storage (Drives :0-:7 / Slots 0-7
 | **TC-16** | RTC Normalization (`OP_TIME`) | Run system clock init via `driver-TOD.S`. | Year 126 normalized to 26; `DATE$` renders valid `MM/DD/26` date string. | Pending Phase 8 |
 | **TC-16a**| Storage Router Dispatch (`drv_target_table`) | Run `DIR :1` with `drv_target_table + 1` = 1 (DriveWire) and active `DCT1$`. | Dispatches OP_READEX for virtual slot 1 via UART1; returns GAT error cleanly when slot is empty. | **PASS (Phase 2 Verified)** |
 | **TC-16b**| Local MicroSD Driver Init & Bounds Check | Run `DIR :1` with `drv_target_table + 1` = 0 (Local SD) and active `DCT1$`. | Hardware SPI0 initializes (`sddvr_inited == 1` at `0x00F400`); checks Base LBA and rejects cleanly with GAT error. | **PASS (Phase 2 Verified)** |
-| **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT 1 "WORK.DSK"`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit to flash. | Pending Phase 4 (Driver Verified in Phase 2) |
-| **TC-18** | Toolshed-Style MOS Suite (`trs80`) | In MOS, execute `*trs80 dir`, `*trs80 copy`, `*trs80 format`, and `*trs80 check` across JV1, DiskDISK, and JV3 images. | Sector operations, file extraction, injection, and format verify with 100% binary parity against Python reference tooling. | Pending Phase 4 |
-| **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash; executes cleanly from `:1`. | Pending Phase 4 (Driver Verified in Phase 2) |
+| **TC-17** | Local Agon SD Mounting | Mount `WORK.DSK` from Agon microSD via `SDMOUNT :1 (PATH=...)` or `FNBOOT`. | Reads sectors via eZ80 SPI0; `DIR :1` lists files; writes commit via `CMD24` RMW and persist cleanly. | **PASS (Phase 4 Verified)** |
+| **TC-18** | Toolshed-Style MOS Suite (`trs80`) | In MOS, execute `*trs80 dir`, `*trs80 copy`, `*trs80 format`, and `*trs80 check` across JV1, DiskDISK, and JV3 images. | Sector operations, file extraction, injection, and format verify with 100% binary parity against Python reference tooling. | **PASS (Phase 4 Verified)** |
+| **TC-19** | Hybrid Cross-Tier Copy | In TRSDOS, execute `COPY FILE/CMD:0 TO :1` (Net to Local SD). | File streams across UART1, commits to SPI0 flash via `CMD24` RMW; executes cleanly from `:1` and passes `*trs80 check`. | **PASS (Phase 4 Verified)** |
 | **TC-20** | Expanded RAM & `MEMDISK` | Mount RAM disk via `MEMDISK :4`; execute directory and file copy. | Sectors read/write via eZ80 24-bit LDIR in 27.7 µs; @BANK switches banks cleanly. | Pending Phase 8 |
 
 ---
