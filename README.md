@@ -11,7 +11,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
 ## Key Features & Multi-Tier Storage Architecture
 
 * **Pure FujiNet Client & Network Booting:**
-  * **Network-Booted Drive `:0`:** Replaces the legacy embedded in-memory RAM disk with direct DriveWire booting. Drive `:0` boots standard LS-DOS 6.3.1 system disk images directly from FujiNet Device Slot 0 (via remote TNFS shares, internet archives, or the FujiNet peripheral's SD card).
+  * **Network-Booted Drive `:0`:** Replaces the legacy embedded in-memory RAM disk with direct DriveWire booting. Drive `:0` boots standard LS-DOS 6.3.1 system disk images directly from FujiNet Device Slot 0 (via remote TNFS shares, the FujiNet server's SD card, or the local SD card on the Agon Light).
   * **Lean System Image:** Eliminating the embedded 425 KB RAM disk image shrinks `TRSDOS.bin` from 480 KiB down to a lean **~64 KiB** kernel/HAL binary (`0x000000`–`0x00FFFF`), leaving **~448 KiB of external SRAM free** for high-speed sector caches, RAM disks, or user workspaces.
   * **100% Persistent System Storage:** System configuration changes, `AUTO` startup scripts, and newly saved files persist directly to the mounted disk image on the FujiNet host.
 * **Updateable Local Agon SD Card Disk Support:**
