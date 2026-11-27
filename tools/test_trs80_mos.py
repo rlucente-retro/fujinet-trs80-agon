@@ -232,6 +232,221 @@ class TestTrs80MosUtility(unittest.TestCase):
         self.assertIn("games/boot.dsk,0x", content)
         self.assertIn("games/rpg/quest.dsk,0x", content)
 
+    @staticmethod
+    def _crc16_ccitt(data: bytes, init: int = 0xFFFF) -> int:
+        crc = init
+        for b in data:
+            crc ^= (b << 8)
+            for _ in range(8):
+                if crc & 0x8000:
+                    crc = ((crc << 1) ^ 0x1021) & 0xFFFF
+                else:
+                    crc = (crc << 1) & 0xFFFF
+        return crc
+
+    @classmethod
+    def _build_dmk_from_linear(cls, raw_sectors: bytes, cyls: int, heads: int, spt: int,
+                               dir_cyl: int, is_dd: bool = True, fm_doubled: bool = False,
+                               interleave: bool = True) -> bytes:
+        """Synthesize a genuine David Keil DMK track bitstream image with valid CRC-16 CCITT."""
+        track_len = 0x1900 if (is_dd or fm_doubled) else 0x0CC0
+        flags = 0x00
+        if heads == 1:
+            flags |= 0x10  # Single-sided
+        if not is_dd and not fm_doubled:
+            flags |= 0x40  # Single-density only (no byte doubling)
+
+        hdr = bytearray(16)
+        hdr[0] = 0x00  # RW
+        hdr[1] = cyls
+        hdr[2] = track_len & 0xFF
+        hdr[3] = (track_len >> 8) & 0xFF
+        hdr[4] = flags
+        out = bytearray(hdr)
+
+        step = 2 if (not is_dd and fm_doubled) else 1
+
+        def emit(buf: bytearray, seq: bytes):
+            if step == 1:
+                buf.extend(seq)
+            else:
+                for b in seq:
+                    buf.append(b)
+                    buf.append(b)
+
+        for c in range(cyls):
+            for h in range(heads):
+                trk = bytearray(track_len)
+                idam_tbl = bytearray(128)
+                pos = 128
+                # Post-index gap
+                gap0 = bytearray()
+                emit(gap0, b"\x4E" * 16 if is_dd else b"\xFF" * 16)
+                trk[pos : pos + len(gap0)] = gap0
+                pos += len(gap0)
+
+                # Optionally interleave sector order on track to prove IDAM table lookup
+                order = list(range(spt))
+                if interleave:
+                    order = order[1::2] + order[0::2]
+
+                for idx, s in enumerate(order):
+                    lsn = (c * heads + h) * spt + s
+                    sec_data = raw_sectors[lsn * 256 : (lsn + 1) * 256]
+                    dam = 0xF8 if c == dir_cyl else 0xFB
+
+                    seg = bytearray()
+                    if is_dd:
+                        emit(seg, b"\x00" * 12)
+                        emit(seg, b"\xA1\xA1\xA1")
+                    else:
+                        emit(seg, b"\x00" * 6)
+
+                    idam_off = pos + len(seg)
+                    id_entry = (idam_off & 0x3FFF) | (0x8000 if is_dd else 0x0000)
+                    idam_tbl[idx * 2] = id_entry & 0xFF
+                    idam_tbl[idx * 2 + 1] = (id_entry >> 8) & 0xFF
+
+                    id_fields = bytes([0xFE, c, h, s, 0x01])
+                    id_crc_in = (b"\xA1\xA1\xA1" if is_dd else b"") + id_fields
+                    id_crc = cls._crc16_ccitt(id_crc_in)
+                    emit(seg, id_fields + bytes([id_crc >> 8, id_crc & 0xFF]))
+
+                    # Gap 2 + sync + DAM
+                    if is_dd:
+                        emit(seg, b"\x4E" * 22 + b"\x00" * 12 + b"\xA1\xA1\xA1" + bytes([dam]))
+                    else:
+                        emit(seg, b"\xFF" * 11 + b"\x00" * 6 + bytes([dam]))
+
+                    # Data + CRC-16 CCITT
+                    data_crc_in = (b"\xA1\xA1\xA1" if is_dd else b"") + bytes([dam]) + sec_data
+                    d_crc = cls._crc16_ccitt(data_crc_in)
+                    emit(seg, sec_data + bytes([d_crc >> 8, d_crc & 0xFF]))
+
+                    # Gap 3
+                    emit(seg, b"\x4E" * 16 if is_dd else b"\xFF" * 12)
+
+                    assert pos + len(seg) <= track_len
+                    trk[pos : pos + len(seg)] = seg
+                    pos += len(seg)
+
+                trk[0:128] = idam_tbl
+                out.extend(trk)
+
+        return bytes(out)
+
+    def test_06_dmk_mfm_fm_read_write_crc_and_convert(self):
+        # --- A. Double-density MFM Double-Sided DMK (40x2x18) ---
+        base_dsk = os.path.join(self.tmpdir, "dmk_src.dsk")
+        r = run_trs80("format", base_dsk, "-f", "diskdisk", "-c", "40", "-s", "2", "-v", "DMKTEST")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+        p1 = os.path.join(self.tmpdir, "dmk_payload1.bin")
+        p2 = os.path.join(self.tmpdir, "dmk_payload2.bin")
+        with open(p1, "wb") as f:
+            f.write(bytes((i * 29 + 7) & 0xFF for i in range(4321)))
+        with open(p2, "wb") as f:
+            f.write(b"Injected directly into DMK with CRC-16 CCITT update!\r")
+
+        r = run_trs80("copy", p1, f"{base_dsk},PROG1/BIN")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+        with open(base_dsk, "rb") as f:
+            raw_dd = f.read()[256:]  # strip DiskDISK header
+
+        dmk_dd = os.path.join(self.tmpdir, "mfm_ds.dmk")
+        with open(dmk_dd, "wb") as f:
+            f.write(self._build_dmk_from_linear(raw_dd, 40, 2, 18, dir_cyl=17, is_dd=True))
+
+        # Verify detection, check, dir, free, extract
+        r = run_trs80("check", dmk_dd)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Format: DMK", r.stdout)
+        self.assertIn("Active files:      1", r.stdout)
+        self.assertIn("RESULT: STRUCTURALLY SOUND", r.stdout)
+
+        ext1 = os.path.join(self.tmpdir, "dmk_ext1.bin")
+        r = run_trs80("copy", f"{dmk_dd},PROG1/BIN", ext1)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sha256_file(p1), sha256_file(ext1))
+
+        # Inject second file directly into DMK (exercises DMK write + CRC-16 CCITT recompute)
+        r = run_trs80("copy", p2, f"{dmk_dd},NOTES/TXT")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = run_trs80("check", dmk_dd)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Active files:      2", r.stdout)
+        self.assertIn("RESULT: STRUCTURALLY SOUND", r.stdout)
+
+        # Verify EVERY written sector on Track 17 in the DMK still has a mathematically valid CRC-16 CCITT!
+        with open(dmk_dd, "rb") as f:
+            dmk_bytes = f.read()
+        t17_off = 16 + (17 * 2 + 0) * 0x1900
+        t17 = dmk_bytes[t17_off : t17_off + 0x1900]
+        checked_secs = 0
+        for idx in range(64):
+            entry = t17[idx * 2] | (t17[idx * 2 + 1] << 8)
+            if entry == 0:
+                break
+            id_off = entry & 0x3FFF
+            # Find A1 A1 A1 + DAM after ID field
+            dam_pos = t17.find(b"\xA1\xA1\xA1\xF8", id_off + 7, id_off + 64)
+            self.assertNotEqual(dam_pos, -1)
+            payload = t17[dam_pos + 4 : dam_pos + 4 + 256]
+            stored_crc = (t17[dam_pos + 4 + 256] << 8) | t17[dam_pos + 4 + 257]
+            calc_crc = self._crc16_ccitt(b"\xA1\xA1\xA1\xF8" + payload)
+            self.assertEqual(stored_crc, calc_crc, f"CRC mismatch on Track 17 sector idx {idx}")
+            checked_secs += 1
+        self.assertEqual(checked_secs, 18)
+
+        # Convert DMK -> contiguous DiskDISK and verify both files + audit
+        conv_dsk = os.path.join(self.tmpdir, "converted_from_dmk.dsk")
+        r = run_trs80("convert", dmk_dd, conv_dsk)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("DMK) ->", r.stdout)
+        self.assertIn("(DiskDISK)", r.stdout)
+        r = run_trs80("check", conv_dsk)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Format: DiskDISK", r.stdout)
+        self.assertIn("Active files:      2", r.stdout)
+        self.assertIn("RESULT: STRUCTURALLY SOUND", r.stdout)
+
+        ext2 = os.path.join(self.tmpdir, "conv_ext2.txt")
+        r = run_trs80("copy", f"{conv_dsk},NOTES/TXT", ext2)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sha256_file(p2), sha256_file(ext2))
+
+        # --- B. Single-Density FM Byte-Doubled DMK (40x1x10, flags=0x10) ---
+        fm_jv1 = os.path.join(self.tmpdir, "fm_src.jv1")
+        r = run_trs80("format", fm_jv1, "-f", "jv1", "-c", "40", "-s", "1", "-t", "10", "-d", "17", "-v", "FMDMK")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = run_trs80("copy", p2, f"{fm_jv1},FMFILE/TXT")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+        with open(fm_jv1, "rb") as f:
+            raw_fm = f.read()
+
+        dmk_fm = os.path.join(self.tmpdir, "fm_doubled.dmk")
+        with open(dmk_fm, "wb") as f:
+            f.write(self._build_dmk_from_linear(raw_fm, 40, 1, 10, dir_cyl=17, is_dd=False, fm_doubled=True))
+
+        r = run_trs80("check", dmk_fm)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Format: DMK", r.stdout)
+        self.assertIn("RESULT: STRUCTURALLY SOUND", r.stdout)
+
+        # Inject into FM byte-doubled DMK and convert -> JV1
+        r = run_trs80("copy", p2, f"{dmk_fm},FM2/TXT")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        conv_jv1 = os.path.join(self.tmpdir, "from_fm_dmk.jv1")
+        r = run_trs80("convert", dmk_fm, conv_jv1, "-f", "jv1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = run_trs80("check", conv_jv1)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Format: JV1", r.stdout)
+        self.assertIn("Active files:      2", r.stdout)
+        self.assertIn("RESULT: STRUCTURALLY SOUND", r.stdout)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

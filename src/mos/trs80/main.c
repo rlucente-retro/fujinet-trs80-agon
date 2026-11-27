@@ -55,18 +55,19 @@ bool split_comma_spec(const char *arg, char *img_out, size_t img_sz,
 
 static int print_help(void) {
     printf("trs80 - Unified TRS-80 / LS-DOS 6.3 Disk Utility for Agon MOS\n");
-    printf("Supports: DiskDISK, JV1, JV3, Reed HDV, Flat HDV\n\n");
+    printf("Supports: DiskDISK, JV1, JV3, DMK, Reed HDV, Flat HDV\n\n");
     printf("Commands:\n");
-    printf("  trs80 dir    <img.dsk>[,pat] [-e] [-a] [-s]   List directory\n");
-    printf("  trs80 copy   [-l] [-r] <src> <dst>            Copy MOS <-> image\n");
-    printf("  trs80 delete <img.dsk>,<file>                 Delete guest file\n");
-    printf("  trs80 rename <img.dsk>,<old> <new>            Rename guest file\n");
-    printf("  trs80 format <img.dsk> [-f fmt] [-c N] [-s H] [-v vol]\n");
-    printf("  trs80 check  <img.dsk>                        Audit GAT/HIT/extents\n");
-    printf("  trs80 free   <img.dsk>                        Show disk capacity\n");
-    printf("  trs80 dump   <img.dsk>[,file] [-s sec]        Hex/ASCII sector dump\n");
-    printf("  trs80 attr   <img.dsk>,<file> [flags]         View/set attributes\n");
-    printf("  trs80 map    [scan_dir] [-o mapfile]          Build sdmap.txt LBAs\n");
+    printf("  trs80 dir     <img.dsk>[,pat] [-e] [-a] [-s]   List directory\n");
+    printf("  trs80 copy    [-l] [-r] <src> <dst>            Copy MOS <-> image\n");
+    printf("  trs80 delete  <img.dsk>,<file>                 Delete guest file\n");
+    printf("  trs80 rename  <img.dsk>,<old> <new>            Rename guest file\n");
+    printf("  trs80 format  <img.dsk> [-f fmt] [-c N] [-s H] [-v vol]\n");
+    printf("  trs80 convert <src> <dst> [-f diskdisk|jv1|hdv] Convert DMK/JV3 -> linear\n");
+    printf("  trs80 check   <img.dsk>                        Audit GAT/HIT/extents\n");
+    printf("  trs80 free    <img.dsk>                        Show disk capacity\n");
+    printf("  trs80 dump    <img.dsk>[,file] [-s sec]        Hex/ASCII sector dump\n");
+    printf("  trs80 attr    <img.dsk>,<file> [flags]         View/set attributes\n");
+    printf("  trs80 map     [scan_dir] [-o mapfile]          Build sdmap.txt LBAs\n");
     return 0;
 }
 
@@ -108,6 +109,9 @@ int main(int argc, char *argv[]) {
     }
     if (str_casecmp(cmd, "map") == 0) {
         return cmd_map(sub_argc, sub_argv);
+    }
+    if (str_casecmp(cmd, "convert") == 0 || str_casecmp(cmd, "conv") == 0) {
+        return cmd_convert(sub_argc, sub_argv);
     }
     if (str_casecmp(cmd, "help") == 0 || strcmp(cmd, "-h") == 0 || strcmp(cmd, "--help") == 0) {
         return print_help();

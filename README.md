@@ -27,7 +27,7 @@ It replaces the legacy, custom serial protocol from [`trs-net-tcp`](https://gith
   3. **Mode 3: Hybrid Operation (Cross-Tier Interoperability):** Mix local SD, remote network, and high SRAM drives (e.g. Drive `:0` booted over TNFS, Drive `:1` mapped to a local updateable SD image, Drive `:4` mapped to high SRAM `MEMDISK`). Standard TRSDOS commands operate transparently across tiers (e.g. `COPY FILE:0 TO :1` downloads a cloud file directly to the local SD card; `BACKUP :0 TO :1` clones a remote network disk to local flash).
 * **Pre-Boot & In-DOS Tool Suites:**
   * **Pre-Boot Visual Manager (`FNBOOT` in Quark MOS):** Interactive MOS visual launcher to query FujiNet status, browse remote TNFS directories and local SD images, assign drives `:0`–`:7`, and launch TRSDOS / LS-DOS 6.3.1.
-  * **MOS FAT32 <-> TRSDOS Interchange & Disk Suite (`trs80`):** Unified Toolshed-style native MOS command (`*trs80 dir`, `copy`, `delete`, `rename`, `format`, `check`, `free`, `dump`, `attr`) to inspect, extract, inject, format, and audit TRSDOS disk images across multiple formats (`DiskDISK`, `JV1`, `JV3`, `HDV`) directly on the Agon FAT32 filesystem without needing a PC.
+  * **MOS FAT32 <-> TRSDOS Interchange & Disk Suite (`trs80`):** Unified Toolshed-style native MOS command (`*trs80 dir`, `copy`, `delete`, `rename`, `format`, `convert`, `check`, `free`, `dump`, `attr`, `map`) to inspect, extract, inject, format, convert, and audit TRSDOS disk images across multiple formats (`DiskDISK`, `JV1`, `JV3`, `DMK`, `HDV`) directly on the Agon FAT32 filesystem without needing a PC.
   * **Native TRSDOS In-DOS Utilities:** Full suite of <= 8-character LS-DOS commands (`FNSTATUS`, `FNHOSTS`, `FNMOUNT`, `FNDEVS`, `FNSETDEV`, `FNMNTIMG`, `DRVMAP`, `SDMOUNT`, `MEMDISK`) for inspecting and hot-swapping drives from the `TRSDOS Ready` prompt.
 * **Universal Disk Image Support:**
   * **JV1:** Flat 256-byte sector layout (LSN * 256), with geometry derived dynamically (Directory Cylinder 17 / GAT).
@@ -167,6 +167,7 @@ The system supports two physical transports:
   * `*trs80 delete <image.dsk>,<file>`: Deletes a file and frees granules in the GAT.
   * `*trs80 rename <image.dsk>,<old> <new>`: Renames files and recalculates HIT hashes.
   * `*trs80 format <image.dsk> [opts]`: Formats new, 100% contiguous disk images on FAT32 (`DiskDISK`, `JV1`, `HDV`).
+  * `*trs80 convert <src> <dst> [-f diskdisk|jv1|hdv]`: Converts any supported container (`DMK`, `JV3`, `JV1`, `DiskDISK`, `HDV`) into a 100% contiguous linear image (`DiskDISK`, `JV1`, or `Reed HDV`) ready for hardware SPI0 Local SD mounting.
   * `*trs80 check <image.dsk>`: Audits filesystem structure (GAT, HIT, directory extents, system overlays).
   * `*trs80 free <image.dsk>`: Displays disk geometry, capacity, and remaining free space.
   * `*trs80 dump <image.dsk>[,<file>]`: Hex/ASCII dumps of arbitrary sectors or files.

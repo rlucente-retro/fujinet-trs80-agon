@@ -18,7 +18,8 @@ typedef enum {
     FMT_JV1      = 2,
     FMT_JV3      = 3,
     FMT_REED_HDV = 4,
-    FMT_FLAT_HDV = 5
+    FMT_FLAT_HDV = 5,
+    FMT_DMK      = 6
 } disk_format_t;
 
 /* Abstract host file handle (MOS uint8_t fh or host FILE*) */
@@ -47,6 +48,9 @@ typedef struct {
     uint8_t  sec_per_gran;    /* Sectors per granule (e.g. 6, 5) */
     uint8_t  dir_sectors;     /* Directory entry sectors (32 on 36-sec cyl, else sec_per_cyl - 2) */
     uint8_t  write_protect;   /* 1 if container header marks write-protected */
+    uint16_t dmk_track_len;   /* DMK: bytes per track including 128B IDAM table */
+    uint8_t  dmk_flags;       /* DMK: header byte 4 (0x10=SS, 0x40=SD-only, 0x80=ignore dens) */
+    uint8_t  dmk_sec_base;    /* DMK: lowest sector ID on track (0 or 1) */
     uint8_t  gat[256];        /* Cached GAT sector */
     uint8_t  hit[256];        /* Cached HIT sector */
     bool     gat_loaded;
@@ -81,6 +85,7 @@ bool     pio_seek(host_file_t *hf, uint32_t offset);
 uint32_t pio_read(host_file_t *hf, void *buf, uint32_t len);
 uint32_t pio_write(host_file_t *hf, const void *buf, uint32_t len);
 bool     pio_exists(const char *path);
+bool     pio_hint_contiguous(host_file_t *hf, uint32_t total_bytes);
 
 /* Disk container abstraction (disk.c) */
 const char *disk_format_name(disk_format_t fmt);
@@ -91,6 +96,8 @@ bool     disk_write_sector(trs_disk_t *d, uint32_t lsn, const uint8_t *buf256);
 bool     disk_format_new(const char *path, disk_format_t fmt, uint16_t cyls,
                          uint8_t heads, uint8_t spt, uint8_t dir_cyl,
                          const char *volname);
+bool     disk_convert(const char *src_path, const char *dst_path,
+                      disk_format_t dst_fmt, uint32_t *out_missing);
 
 /* LS-DOS 6.3 filesystem engine (lsdos.c) */
 uint8_t  lsdos_hit_hash(const char *name8, const char *ext3);
@@ -117,6 +124,7 @@ int cmd_free(int argc, char **argv);
 int cmd_dump(int argc, char **argv);
 int cmd_attr(int argc, char **argv);
 int cmd_map(int argc, char **argv);
+int cmd_convert(int argc, char **argv);
 
 /* Shared helpers (main.c) */
 bool split_comma_spec(const char *arg, char *img_out, size_t img_sz,
