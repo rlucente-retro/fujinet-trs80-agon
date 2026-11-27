@@ -140,8 +140,9 @@ bool fnboot_stage_kernel(const fnboot_ctx_t *ctx, const char *out_tmp_path) {
             if (probe_local_image(dc->label, &off, dct7)) {
                 memcpy(&dct[3], dct7, 7);
             } else {
-                /* Clone DCT0$ default geometry (40x2x18) */
+                /* Clone DCT0$ default geometry (40x2x18 DS/DD; unbooted TRSDOS.bin DCT0$+4 has bit 5 = 0) */
                 memcpy(&dct[3], &kbuf[OFF_DCT0 + 3], 7);
+                dct[4] |= 0x20u;
             }
             kbuf[OFF_DW_OFFSET + d] = off;
 
@@ -162,7 +163,8 @@ bool fnboot_stage_kernel(const fnboot_ctx_t *ctx, const char *out_tmp_path) {
                 if (dc->mode == 1) dct[3] |= 0x80u;
                 else               dct[3] &= 0x7Fu;
                 uint8_t dbit = (d < 4) ? (uint8_t)(1u << d) : 0x01u;
-                dct[4] = (uint8_t)((dct[4] & 0xE0u) | 0x10u | dbit);
+                /* Unbooted TRSDOS.bin DCT0$+4 is 0x00 (single-sided); set bit 5 (0x20) for 40x2x18 DS/DD */
+                dct[4] = (uint8_t)((dct[4] & 0xE0u) | 0x20u | 0x10u | dbit);
                 dct[5] = 0;
             }
         } else {

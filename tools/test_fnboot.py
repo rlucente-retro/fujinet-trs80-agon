@@ -95,10 +95,43 @@ class TestFnboot(unittest.TestCase):
         dct3 = k[0x048E : 0x048E + 10]
         self.assertEqual(dct1[0], 0xC3)               # JP FDCDVR (active)
         self.assertEqual(dct1[3] & 0x80, 0x00)        # RW
+        self.assertEqual(dct1[4] & 0x20, 0x20)        # Double-sided (40x2x18)
         self.assertEqual(dct1[4] & 0x10, 0x10)        # Alien flag set (preserves :1 across IPL)
         self.assertEqual(dct2[0], 0xC3)               # JP FDCDVR (active)
         self.assertEqual(dct2[3] & 0x80, 0x80)        # RO
+        self.assertEqual(dct2[4] & 0x20, 0x20)        # Double-sided (40x2x18)
         self.assertEqual(dct3[0], 0xC9)               # RET (offline)
+
+    def test_03_drivewire_secondary_drive_is_double_sided(self):
+        if not os.path.isfile(TRSDOS_BIN):
+            self.skipTest("TRSDOS.bin not present")
+
+        sub = tempfile.mkdtemp(dir=self.tmpdir)
+        ini_path = os.path.join(sub, "fnboot.ini")
+        with open(ini_path, "w") as f:
+            f.write(f"KERNEL={TRSDOS_BIN}\n")
+            f.write("DRV0=DW:0\n")
+            f.write("DRV1=DW:1\n")
+
+        r = subprocess.run(
+            [FNBOOT_HOST, "-b"],
+            cwd=sub,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(sub, "fnboot.tmp"), "rb") as f:
+            k = f.read()
+
+        # Drive :1 routed to DriveWire with DiskDISK offset=1 and DS/DD bit 5 (0x20) set
+        self.assertEqual(k[0x0E76 + 1], 1)
+        self.assertEqual(k[0x0F78 + 1], 1)
+        dct1 = k[0x047A : 0x047A + 10]
+        self.assertEqual(dct1[0], 0xC3)               # JP FDCDVR (active)
+        self.assertEqual(dct1[3] & 0x80, 0x80)        # RO
+        self.assertEqual(dct1[4] & 0x20, 0x20)        # Double-sided (40x2x18)
+        self.assertEqual(dct1[4] & 0x10, 0x10)        # Alien flag set (preserves :1 across IPL)
+        self.assertEqual(dct1[4] & 0x0F, 0x02)        # Drive 1 select bit
 
     def test_02_pure_local_sd_boot_drive0(self):
         if not os.path.isfile(TRSDOS_BIN):
